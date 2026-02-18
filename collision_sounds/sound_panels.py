@@ -48,12 +48,12 @@ class VIEW3D_PT_add_sounds(bpy.types.Panel):
                 count = len(get_sound_files_from_folder(folder_path))
                 col.label(text=f"Will use {count} sound(s) randomly", icon='INFO')
 
-        # Load from JSON.
-        layout.separator()
-        layout.operator("collision.load_json_events", icon='IMPORT')
-
         # Add / clear sounds.
         layout.separator()
+        if len(events) > 0:
+            layout.label(text=f"Using {len(events)} detected event(s)", icon='CHECKMARK')
+        else:
+            layout.label(text="Run Detect Collisions first", icon='ERROR')
         row = layout.row(align=True)
         row.scale_y = 1.3
         row.enabled = len(events) > 0
