@@ -265,6 +265,25 @@ class COLLISION_OT_select_sound_folder(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
 
+class COLLISION_OT_use_default_sounds(bpy.types.Operator):
+    """Use the bundled default sound files"""
+    bl_idname = "collision.use_default_sounds"
+    bl_label = "Use Default Sounds"
+    bl_options = {'REGISTER'}
+
+    def execute(self, context):
+        from pathlib import Path
+        sounds_folder = str(Path(__file__).resolve().parent / "sounds")
+        if os.path.isdir(sounds_folder):
+            context.scene.collision_sound_import.sound_folder = sounds_folder
+            from .sound_properties import get_sound_files_from_folder
+            count = len(get_sound_files_from_folder(sounds_folder))
+            self.report({'INFO'}, f"Using default sounds ({count} file(s))")
+            return {'FINISHED'}
+        self.report({'ERROR'}, "Default sounds folder not found — add .wav files to the addon's sounds/ folder")
+        return {'CANCELLED'}
+
+
 class COLLISION_OT_clear_sounds(bpy.types.Operator):
     """Remove all sound strips that were added by this addon"""
     bl_idname = "collision.clear_sounds"

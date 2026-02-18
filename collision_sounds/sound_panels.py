@@ -27,7 +27,9 @@ class VIEW3D_PT_add_sounds(bpy.types.Panel):
             row.label(text=folder_name, icon='CHECKMARK')
         else:
             row.label(text="Not selected", icon='ERROR')
-        col.operator("collision.select_sound_folder", text="Select Folder...", icon='FILEBROWSER')
+        row = col.row(align=True)
+        row.operator("collision.use_default_sounds", text="Use Default", icon='PACKAGE')
+        row.operator("collision.select_sound_folder", text="Select Folder...", icon='FILEBROWSER')
 
         if settings.sound_folder:
             layout.separator()
