@@ -12,6 +12,7 @@ class VIEW3D_PT_add_sounds(bpy.types.Panel):
     bl_region_type = 'UI'
     bl_category = "Collision Sounds"
     bl_parent_id = "VIEW3D_PT_collision_sounds"
+    bl_order = 2
 
     def draw(self, context):
         layout = self.layout

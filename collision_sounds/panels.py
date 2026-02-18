@@ -19,6 +19,7 @@ class VIEW3D_PT_detect_collisions(bpy.types.Panel):
     bl_region_type = 'UI'
     bl_category = "Collision Sounds"
     bl_parent_id = "VIEW3D_PT_collision_sounds"
+    bl_order = 0
 
     def draw(self, context):
         layout = self.layout
@@ -59,6 +60,7 @@ class VIEW3D_PT_debug(bpy.types.Panel):
     bl_category = "Collision Sounds"
     bl_parent_id = "VIEW3D_PT_collision_sounds"
     bl_options = {'DEFAULT_CLOSED'}
+    bl_order = 1
 
     def draw(self, context):
         layout = self.layout
