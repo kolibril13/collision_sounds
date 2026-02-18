@@ -36,3 +36,18 @@ class VIEW3D_PT_detect_collisions(bpy.types.Panel):
         if len(settings.events) > 0:
             layout.separator()
             layout.label(text=f"{len(settings.events)} event(s) detected")
+
+
+class VIEW3D_PT_debug(bpy.types.Panel):
+    bl_label = "Debug"
+    bl_idname = "VIEW3D_PT_debug"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "Collision Sounds"
+    bl_parent_id = "VIEW3D_PT_collision_sounds"
+    bl_options = {'DEFAULT_CLOSED'}
+
+    def draw(self, context):
+        layout = self.layout
+        layout.operator("collision.debug_visualize", icon='SPHERE')
+        layout.operator("collision.debug_clear", icon='TRASH')

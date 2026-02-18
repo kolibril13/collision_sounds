@@ -7,21 +7,6 @@ from mathutils.bvhtree import BVHTree
 COLLISION_EPSILON = 0.01
 
 
-class _MeshBVH:
-    """A BVH tree bundled with its world-space geometry for contact queries."""
-
-    __slots__ = ("bvh", "vertices", "polygons")
-
-    def __init__(self, bvh, vertices, polygons):
-        self.bvh = bvh
-        self.vertices = vertices
-        self.polygons = polygons
-
-    def tri_centroid(self, tri_index):
-        verts = [self.vertices[i] for i in self.polygons[tri_index]]
-        return sum(verts, Vector()) / len(verts)
-
-
 def detect_collisions(context):
     """Scan the full animation timeline and return collision onset events.
 
@@ -74,17 +59,18 @@ def detect_collisions(context):
                 bvh_cache[name] = mesh_bvh
 
         for target, collider in pairs:
-            mbvh_target = bvh_cache.get(target.name)
-            mbvh_collider = bvh_cache.get(collider.name)
-            if mbvh_target is None or mbvh_collider is None:
+            bvh_target = bvh_cache.get(target.name)
+            bvh_collider = bvh_cache.get(collider.name)
+            if bvh_target is None or bvh_collider is None:
                 continue
 
-            overlaps = mbvh_target.bvh.overlap(mbvh_collider.bvh)
+            overlaps = bvh_target.overlap(bvh_collider)
             is_overlapping = len(overlaps) > 0
             key = (target.name, collider.name)
 
             if is_overlapping and not was_overlapping[key]:
-                contact = _contact_position(mbvh_target, mbvh_collider, overlaps)
+                active_pos = cur_positions[collider.name]
+                contact = _contact_position(bvh_target, active_pos)
                 active_vel = cur_velocities.get(collider.name, Vector())
                 passive_vel = cur_velocities.get(target.name, Vector())
                 rel_vel = active_vel - passive_vel
@@ -121,16 +107,15 @@ def _bvh_from_object(obj, depsgraph):
 
     bvh = BVHTree.FromPolygons(vertices, polygons, epsilon=COLLISION_EPSILON)
     eval_obj.to_mesh_clear()
-    return _MeshBVH(bvh, vertices, polygons)
+    return bvh
 
 
-def _contact_position(mesh_a, mesh_b, overlaps):
-    """Approximate the contact point from overlapping triangle pairs."""
-    points = []
-    for idx_a, idx_b in overlaps:
-        points.append(mesh_a.tri_centroid(idx_a))
-        points.append(mesh_b.tri_centroid(idx_b))
-    return sum(points, Vector()) / len(points)
+def _contact_position(passive_bvh, active_world_pos):
+    """Find the closest point on the passive surface to the active object."""
+    location, _normal, _index, _dist = passive_bvh.find_nearest(active_world_pos)
+    if location is not None:
+        return location
+    return active_world_pos
 
 
 def _round_vec(vec, precision=4):
