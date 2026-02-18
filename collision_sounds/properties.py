@@ -12,6 +12,12 @@ class CollisionSoundsSettings(bpy.types.PropertyGroup):
         description="Collection of surfaces/objects that get hit",
         type=bpy.types.Collection,
     )
+    output_path: bpy.props.StringProperty(
+        name="Output",
+        description="Path to save collision events JSON",
+        default="//collision_events.json",
+        subtype='FILE_PATH',
+    )
 
 
 def register():

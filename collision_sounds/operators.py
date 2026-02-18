@@ -1,3 +1,6 @@
+import json
+import os
+
 import bpy
 
 from . import detection
@@ -35,11 +38,27 @@ class COLLISION_OT_detect(bpy.types.Operator):
 
         scene.frame_set(original_frame)
 
-        if events:
-            self.report({'INFO'}, f"Found {len(events)} collision event(s)")
-            for e in events:
-                print(f"  Frame {e['frame']}: {e['target']} -> {e['collider']}")
-        else:
-            self.report({'INFO'}, "No collisions detected")
+        filepath = bpy.path.abspath(settings.output_path)
+        if not filepath:
+            self.report({'ERROR'}, "No output path set")
+            return {'CANCELLED'}
 
+        fps = scene.render.fps / scene.render.fps_base
+        output = {
+            "metadata": {
+                "epsilon": detection.COLLISION_EPSILON,
+                "fps": fps,
+                "frame_start": scene.frame_start,
+                "frame_end": scene.frame_end,
+                "targets_collection": settings.targets_collection.name,
+                "colliders_collection": settings.colliders_collection.name,
+            },
+            "events": events,
+        }
+
+        os.makedirs(os.path.dirname(filepath) or ".", exist_ok=True)
+        with open(filepath, "w") as f:
+            json.dump(output, f, indent=2)
+
+        self.report({'INFO'}, f"Saved {len(events)} collision event(s) to {filepath}")
         return {'FINISHED'}

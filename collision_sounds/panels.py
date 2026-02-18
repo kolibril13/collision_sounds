@@ -27,4 +27,6 @@ class VIEW3D_PT_detect_collisions(bpy.types.Panel):
         layout.prop(settings, "targets_collection", icon='GROUP')
         layout.prop(settings, "colliders_collection", icon='GROUP')
         layout.separator()
+        layout.prop(settings, "output_path")
+        layout.separator()
         layout.operator("collision.detect", icon='PLAY')
