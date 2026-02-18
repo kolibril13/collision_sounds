@@ -35,30 +35,47 @@ class COLLISION_OT_detect(bpy.types.Operator):
             return {'CANCELLED'}
 
         events = detection.detect_collisions(context)
-
         scene.frame_set(original_frame)
 
-        filepath = bpy.path.abspath(settings.output_path)
-        if not filepath:
-            self.report({'ERROR'}, "No output path set")
-            return {'CANCELLED'}
+        # Store results in the blend-file-internal collection property.
+        settings.events.clear()
+        for e in events:
+            item = settings.events.add()
+            item.frame = e["frame"]
+            item.time = e["time"]
+            item.active = e["active"]
+            item.passive = e["passive"]
+            item.position = e["position"]
+            item.velocity = e["velocity"]
+            item.relative_velocity = e["relative_velocity"]
+            item.speed = e["speed"]
 
-        fps = scene.render.fps / scene.render.fps_base
-        output = {
-            "metadata": {
-                "epsilon": detection.COLLISION_EPSILON,
-                "fps": fps,
-                "frame_start": scene.frame_start,
-                "frame_end": scene.frame_end,
-                "targets_collection": settings.targets_collection.name,
-                "colliders_collection": settings.colliders_collection.name,
-            },
-            "events": events,
-        }
+        # Optionally export to JSON.
+        if settings.export_json:
+            filepath = bpy.path.abspath(settings.output_path)
+            if not filepath:
+                self.report({'ERROR'}, "No output path set")
+                return {'CANCELLED'}
 
-        os.makedirs(os.path.dirname(filepath) or ".", exist_ok=True)
-        with open(filepath, "w") as f:
-            json.dump(output, f, indent=2)
+            fps = scene.render.fps / scene.render.fps_base
+            output = {
+                "metadata": {
+                    "epsilon": detection.COLLISION_EPSILON,
+                    "fps": fps,
+                    "frame_start": scene.frame_start,
+                    "frame_end": scene.frame_end,
+                    "targets_collection": settings.targets_collection.name,
+                    "colliders_collection": settings.colliders_collection.name,
+                },
+                "events": events,
+            }
 
-        self.report({'INFO'}, f"Saved {len(events)} collision event(s) to {filepath}")
+            os.makedirs(os.path.dirname(filepath) or ".", exist_ok=True)
+            with open(filepath, "w") as f:
+                json.dump(output, f, indent=2)
+
+            self.report({'INFO'}, f"Found {len(events)} collision event(s) — exported to {filepath}")
+        else:
+            self.report({'INFO'}, f"Found {len(events)} collision event(s)")
+
         return {'FINISHED'}
