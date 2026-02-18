@@ -34,13 +34,10 @@ class VIEW3D_PT_detect_collisions(bpy.types.Panel):
         if settings.precision_mode:
             layout.prop(settings, "substeps")
             accuracy_ms = 1000.0 / (fps * settings.substeps)
-        else:
-            accuracy_ms = 1000.0 / fps
-
-        col = layout.column(align=True)
-        col.label(text=f"FPS: {fps:g}  |  Accuracy: {accuracy_ms:.2f} ms")
-        if accuracy_ms > 5.0:
-            col.label(text="Human perception is ~5 ms", icon='INFO')
+            col = layout.column(align=True)
+            col.label(text=f"FPS: {fps:g}  |  Accuracy: {accuracy_ms:.2f} ms")
+            if accuracy_ms > 5.0:
+                col.label(text="Human perception is ~5 ms", icon='INFO')
 
         layout.separator()
         layout.prop(settings, "export_json")
