@@ -22,10 +22,26 @@ class VIEW3D_PT_detect_collisions(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        settings = context.scene.collision_sounds
+        scene = context.scene
+        settings = scene.collision_sounds
+        fps = scene.render.fps / scene.render.fps_base
 
         layout.prop(settings, "targets_collection", icon='GROUP')
         layout.prop(settings, "colliders_collection", icon='GROUP')
+
+        layout.separator()
+        layout.prop(settings, "precision_mode")
+        if settings.precision_mode:
+            layout.prop(settings, "substeps")
+            accuracy_ms = 1000.0 / (fps * settings.substeps)
+        else:
+            accuracy_ms = 1000.0 / fps
+
+        col = layout.column(align=True)
+        col.label(text=f"FPS: {fps:g}  |  Accuracy: {accuracy_ms:.2f} ms")
+        if accuracy_ms > 5.0:
+            col.label(text="Human perception is ~5 ms", icon='INFO')
+
         layout.separator()
         layout.prop(settings, "export_json")
         if settings.export_json:

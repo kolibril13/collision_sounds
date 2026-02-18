@@ -4,7 +4,7 @@ import bpy
 
 
 class CollisionEvent(bpy.types.PropertyGroup):
-    frame: bpy.props.IntProperty(name="Frame")
+    frame: bpy.props.FloatProperty(name="Frame")
     time: bpy.props.FloatProperty(name="Time")
     active: bpy.props.StringProperty(name="Active")
     passive: bpy.props.StringProperty(name="Passive")
@@ -28,6 +28,18 @@ class CollisionSoundsSettings(bpy.types.PropertyGroup):
     events: bpy.props.CollectionProperty(
         name="Collision Events",
         type=CollisionEvent,
+    )
+    precision_mode: bpy.props.BoolProperty(
+        name="Precision Mode",
+        description="Scan at sub-frame intervals for more accurate collision timing",
+        default=False,
+    )
+    substeps: bpy.props.IntProperty(
+        name="Substeps",
+        description="Number of sub-frame steps per frame",
+        default=8,
+        min=2,
+        max=64,
     )
     export_json: bpy.props.BoolProperty(
         name="Export JSON",

@@ -31,64 +31,73 @@ def detect_collisions(context):
         if t.name != c.name
     ]
 
+    substeps = settings.substeps if settings.precision_mode else 1
+    step = 1.0 / substeps
+    # Velocity scaling: displacement per sub-step -> units per second.
+    vel_scale = fps * substeps
+
     was_overlapping = {(t.name, c.name): False for t, c in pairs}
     prev_positions = {}
     collision_events = []
     all_objects = {obj.name: obj for obj in set(targets) | set(colliders)}
 
-    for frame in range(scene.frame_start, scene.frame_end + 1):
-        scene.frame_set(frame)
-        depsgraph.update()
+    for frame_int in range(scene.frame_start, scene.frame_end + 1):
+        for sub in range(substeps):
+            subframe = sub * step
+            scene.frame_set(frame_int, subframe=subframe)
+            depsgraph.update()
 
-        # Compute world positions and velocities for every relevant object.
-        cur_positions = {}
-        cur_velocities = {}
-        for name, obj in all_objects.items():
-            pos = obj.evaluated_get(depsgraph).matrix_world.translation.copy()
-            cur_positions[name] = pos
-            if name in prev_positions:
-                cur_velocities[name] = (pos - prev_positions[name]) * fps
-            else:
-                cur_velocities[name] = Vector((0.0, 0.0, 0.0))
+            current_frame = frame_int + subframe
 
-        # Build BVH trees (cache per-frame so each mesh is tessellated once).
-        bvh_cache = {}
-        for name, obj in all_objects.items():
-            mesh_bvh = _bvh_from_object(obj, depsgraph)
-            if mesh_bvh is not None:
-                bvh_cache[name] = mesh_bvh
+            # Compute world positions and velocities for every relevant object.
+            cur_positions = {}
+            cur_velocities = {}
+            for name, obj in all_objects.items():
+                pos = obj.evaluated_get(depsgraph).matrix_world.translation.copy()
+                cur_positions[name] = pos
+                if name in prev_positions:
+                    cur_velocities[name] = (pos - prev_positions[name]) * vel_scale
+                else:
+                    cur_velocities[name] = Vector((0.0, 0.0, 0.0))
 
-        for target, collider in pairs:
-            bvh_target = bvh_cache.get(target.name)
-            bvh_collider = bvh_cache.get(collider.name)
-            if bvh_target is None or bvh_collider is None:
-                continue
+            # Build BVH trees (cache per sub-step so each mesh is tessellated once).
+            bvh_cache = {}
+            for name, obj in all_objects.items():
+                mesh_bvh = _bvh_from_object(obj, depsgraph)
+                if mesh_bvh is not None:
+                    bvh_cache[name] = mesh_bvh
 
-            overlaps = bvh_target.overlap(bvh_collider)
-            is_overlapping = len(overlaps) > 0
-            key = (target.name, collider.name)
+            for target, collider in pairs:
+                bvh_target = bvh_cache.get(target.name)
+                bvh_collider = bvh_cache.get(collider.name)
+                if bvh_target is None or bvh_collider is None:
+                    continue
 
-            if is_overlapping and not was_overlapping[key]:
-                active_pos = cur_positions[collider.name]
-                contact = _contact_position(bvh_target, active_pos)
-                active_vel = cur_velocities.get(collider.name, Vector())
-                passive_vel = cur_velocities.get(target.name, Vector())
-                rel_vel = active_vel - passive_vel
+                overlaps = bvh_target.overlap(bvh_collider)
+                is_overlapping = len(overlaps) > 0
+                key = (target.name, collider.name)
 
-                collision_events.append({
-                    "frame": frame,
-                    "time": round(frame / fps, 6),
-                    "active": collider.name,
-                    "passive": target.name,
-                    "position": _round_vec(contact),
-                    "velocity": _round_vec(active_vel),
-                    "relative_velocity": _round_vec(rel_vel),
-                    "speed": round(rel_vel.length, 4),
-                })
+                if is_overlapping and not was_overlapping[key]:
+                    active_pos = cur_positions[collider.name]
+                    contact = _contact_position(bvh_target, active_pos)
+                    active_vel = cur_velocities.get(collider.name, Vector())
+                    passive_vel = cur_velocities.get(target.name, Vector())
+                    rel_vel = active_vel - passive_vel
 
-            was_overlapping[key] = is_overlapping
+                    collision_events.append({
+                        "frame": round(current_frame, 4),
+                        "time": round(current_frame / fps, 6),
+                        "active": collider.name,
+                        "passive": target.name,
+                        "position": _round_vec(contact),
+                        "velocity": _round_vec(active_vel),
+                        "relative_velocity": _round_vec(rel_vel),
+                        "speed": round(rel_vel.length, 4),
+                    })
 
-        prev_positions = cur_positions
+                was_overlapping[key] = is_overlapping
+
+            prev_positions = cur_positions
 
     return collision_events
 
