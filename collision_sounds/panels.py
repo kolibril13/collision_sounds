@@ -53,7 +53,7 @@ class VIEW3D_PT_detect_collisions(bpy.types.Panel):
 
 
 class VIEW3D_PT_debug(bpy.types.Panel):
-    bl_label = "Debug"
+    bl_label = "Visualize Collisions"
     bl_idname = "VIEW3D_PT_debug"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
