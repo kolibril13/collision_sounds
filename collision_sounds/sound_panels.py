@@ -57,7 +57,25 @@ class VIEW3D_PT_add_sounds(bpy.types.Panel):
         row = layout.row(align=True)
         row.scale_y = 1.3
         row.enabled = len(events) > 0
-        row.operator("collision.add_sounds", icon='PLAY_SOUND')
+        row.operator("collision.add_sounds", text="All Events", icon='PLAY_SOUND')
+
+        # Selection-based sound assignment.
+        selected_points = [
+            obj for obj in context.selected_objects
+            if "collision_frame" in obj
+        ]
+        num_selected = len(selected_points)
+        col = layout.column(align=True)
+        if num_selected > 0:
+            col.label(text=f"{num_selected} collision point(s) selected", icon='RESTRICT_SELECT_OFF')
+        else:
+            col.label(text="Select collision points in viewport", icon='RESTRICT_SELECT_ON')
+        row = col.row(align=True)
+        row.scale_y = 1.3
+        row.enabled = num_selected > 0
+        row.operator("collision.add_sounds_for_selection", icon='PLAY_SOUND')
+
+        layout.separator()
         layout.operator("collision.clear_sounds", icon='TRASH')
 
 

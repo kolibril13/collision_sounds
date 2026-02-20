@@ -140,7 +140,7 @@ class COLLISION_OT_add_sounds(bpy.types.Operator):
         cam_data_cache = None
         if camera_obj:
             cam_data_cache = _precompute_camera_data(
-                context, events, camera_obj,
+                context, [Vector(e.position) for e in events], camera_obj,
             )
 
         # Ensure VSE exists.
@@ -202,6 +202,134 @@ class COLLISION_OT_add_sounds(bpy.types.Operator):
                 _apply_strip_color(strip, strip_obj_map[strip], color_map)
 
         self.report({'INFO'}, f"Added {len(new_strips)} sound strip(s) (channel {base_channel}+)")
+        return {'FINISHED'}
+
+
+class COLLISION_OT_add_sounds_for_selection(bpy.types.Operator):
+    """Add sound strips to the VSE only for selected collision points"""
+    bl_idname = "collision.add_sounds_for_selection"
+    bl_label = "Add Sounds for Selection"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return any("collision_frame" in obj for obj in context.selected_objects)
+
+    def execute(self, context):
+        scene = context.scene
+        settings = scene.collision_sound_import
+
+        sound_folder = bpy.path.abspath(settings.sound_folder)
+        if not sound_folder or not os.path.isdir(sound_folder):
+            self.report({'ERROR'}, "Select a valid sound folder first")
+            return {'CANCELLED'}
+
+        available = get_sound_files_from_folder(sound_folder)
+        if not available:
+            self.report({'ERROR'}, "No audio files found in the selected folder")
+            return {'CANCELLED'}
+
+        single_path = None
+        if settings.sound_selection_mode == 'SINGLE':
+            if not settings.sound_file or settings.sound_file == 'NONE':
+                self.report({'ERROR'}, "Select a sound file")
+                return {'CANCELLED'}
+            single_path = os.path.join(sound_folder, settings.sound_file)
+            if not os.path.exists(single_path):
+                self.report({'ERROR'}, f"Sound file not found: {single_path}")
+                return {'CANCELLED'}
+
+        selected = [
+            obj for obj in context.selected_objects
+            if "collision_frame" in obj
+        ]
+        if not selected:
+            self.report({'WARNING'}, "No collision points selected")
+            return {'CANCELLED'}
+
+        camera_obj = None
+        if settings.use_camera_volume_pan:
+            camera_obj = scene.camera
+            if not camera_obj:
+                self.report({'ERROR'},
+                            "No active camera. Set one or disable Camera Distance option.")
+                return {'CANCELLED'}
+
+        speeds = [obj["collision_raw_speed"] for obj in selected]
+        min_speed = min(speeds)
+        max_speed = max(speeds)
+        speed_range = max_speed - min_speed if max_speed > min_speed else 1.0
+
+        cam_data_cache = None
+        if camera_obj:
+            positions = [Vector(obj["collision_position"]) for obj in selected]
+            cam_data_cache = _precompute_camera_data(context, positions, camera_obj)
+
+        seq_scene = _get_sequencer_scene(context)
+        if not seq_scene.sequence_editor:
+            seq_scene.sequence_editor_create()
+        sed = seq_scene.sequence_editor
+        base_channel = _find_next_available_channel(sed)
+
+        new_strips = []
+        color_map = {}
+        strip_obj_map = {}
+
+        for obj in selected:
+            sound_path = (
+                os.path.join(sound_folder, random.choice(available))
+                if settings.sound_selection_mode == 'RANDOM'
+                else single_path
+            )
+
+            speed = obj["collision_raw_speed"]
+            frame = obj["collision_frame"]
+            position = Vector(obj["collision_position"])
+            active = obj["collision_active"]
+            passive = obj["collision_passive"]
+
+            volume = 1.0
+            pan = 0.0
+
+            if settings.use_speed_volume:
+                t = (speed - min_speed) / speed_range if speed_range > 0 else 1.0
+                volume *= (settings.speed_volume_softer
+                           + t * (settings.speed_volume_louder - settings.speed_volume_softer))
+
+            if camera_obj and cam_data_cache:
+                cam_vol, cam_pan = _camera_volume_pan(
+                    position, camera_obj, frame, cam_data_cache,
+                )
+                volume *= cam_vol
+                pan = cam_pan
+
+            if settings.use_volume_randomness:
+                volume = _random_volume(volume, settings.volume_randomness)
+
+            frame_int = int(round(frame))
+            vol_pct = int(round(volume * 100))
+            name = f"{active}_{passive}_v{vol_pct}"
+
+            strip = _add_sound_strip(sed, name, sound_path, base_channel, frame_int)
+
+            if hasattr(strip, 'volume'):
+                strip.volume = volume
+            if hasattr(strip, 'sound') and hasattr(strip.sound, 'use_mono'):
+                strip.sound.use_mono = True
+            if settings.use_camera_volume_pan and hasattr(strip, 'pan'):
+                strip.pan = pan
+
+            _apply_strip_color(strip, active, color_map)
+            strip_obj_map[strip] = active
+            new_strips.append(strip)
+
+        if new_strips:
+            _separate_overlapping_strips(new_strips, base_channel)
+            for strip in new_strips:
+                _apply_strip_color(strip, strip_obj_map[strip], color_map)
+
+        self.report({'INFO'},
+                    f"Added {len(new_strips)} sound strip(s) for selection (channel {base_channel}+)")
         return {'FINISHED'}
 
 
@@ -329,9 +457,8 @@ class COLLISION_OT_render_audio(bpy.types.Operator):
 # Camera helpers
 # ---------------------------------------------------------------------------
 
-def _precompute_camera_data(context, events, camera_obj):
+def _precompute_camera_data(context, positions, camera_obj):
     """Pre-compute distance range and horizontal FOV for camera-based volume."""
-    positions = [Vector(e.position) for e in events]
     cam_pos = camera_obj.matrix_world.translation
     distances = [(p - cam_pos).length for p in positions]
 
