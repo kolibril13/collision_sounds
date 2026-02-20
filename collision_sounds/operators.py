@@ -17,21 +17,13 @@ class COLLISION_OT_detect(bpy.types.Operator):
         settings = scene.collision_sounds
         original_frame = scene.frame_current
 
-        if settings.targets_collection is None:
-            self.report({'ERROR'}, "No targets collection assigned")
-            return {'CANCELLED'}
-        if settings.colliders_collection is None:
-            self.report({'ERROR'}, "No colliders collection assigned")
+        if settings.objects_collection is None:
+            self.report({'ERROR'}, "No interacting objects collection assigned")
             return {'CANCELLED'}
 
-        targets = [o for o in settings.targets_collection.objects if o.type == 'MESH']
-        colliders = [o for o in settings.colliders_collection.objects if o.type == 'MESH']
-
-        if not targets:
-            self.report({'ERROR'}, "Targets collection contains no mesh objects")
-            return {'CANCELLED'}
-        if not colliders:
-            self.report({'ERROR'}, "Colliders collection contains no mesh objects")
+        meshes = [o for o in settings.objects_collection.objects if o.type == 'MESH']
+        if len(meshes) < 2:
+            self.report({'ERROR'}, "Collection needs at least 2 mesh objects")
             return {'CANCELLED'}
 
         events = detection.detect_collisions(context)
@@ -64,8 +56,7 @@ class COLLISION_OT_detect(bpy.types.Operator):
                     "fps": fps,
                     "frame_start": scene.frame_start,
                     "frame_end": scene.frame_end,
-                    "targets_collection": settings.targets_collection.name,
-                    "colliders_collection": settings.colliders_collection.name,
+                    "objects_collection": settings.objects_collection.name,
                 },
                 "events": events,
             }

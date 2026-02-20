@@ -1,3 +1,5 @@
+from itertools import combinations
+
 import bpy
 from mathutils import Vector
 from mathutils.bvhtree import BVHTree
@@ -26,20 +28,13 @@ def detect_collisions(context):
     precision = settings.precision_mode
     substeps = settings.substeps if precision else 1
 
-    targets = [obj for obj in settings.targets_collection.objects if obj.type == 'MESH']
-    colliders = [obj for obj in settings.colliders_collection.objects if obj.type == 'MESH']
+    objects = [obj for obj in settings.objects_collection.objects if obj.type == 'MESH']
+    pairs = list(combinations(objects, 2))
 
-    pairs = [
-        (t, c)
-        for t in targets
-        for c in colliders
-        if t.name != c.name
-    ]
-
-    was_overlapping = {(t.name, c.name): False for t, c in pairs}
+    was_overlapping = {(a.name, b.name): False for a, b in pairs}
     prev_positions = {}
     collision_events = []
-    all_objects = {obj.name: obj for obj in set(targets) | set(colliders)}
+    all_objects = {obj.name: obj for obj in objects}
 
     for frame in range(scene.frame_start, scene.frame_end + 1):
         scene.frame_set(frame)
@@ -61,68 +56,67 @@ def detect_collisions(context):
             if bvh is not None:
                 bvh_cache[name] = bvh
 
-        for target, collider in pairs:
-            bvh_target = bvh_cache.get(target.name)
-            bvh_collider = bvh_cache.get(collider.name)
-            if bvh_target is None or bvh_collider is None:
+        for obj_a, obj_b in pairs:
+            bvh_a = bvh_cache.get(obj_a.name)
+            bvh_b = bvh_cache.get(obj_b.name)
+            if bvh_a is None or bvh_b is None:
                 continue
 
-            overlaps = bvh_target.overlap(bvh_collider)
+            overlaps = bvh_a.overlap(bvh_b)
             is_overlapping = len(overlaps) > 0
-            key = (target.name, collider.name)
+            key = (obj_a.name, obj_b.name)
 
             if is_overlapping and not was_overlapping[key]:
                 if precision and frame > scene.frame_start:
                     precise_frame = _bisect_onset(
                         scene, depsgraph,
-                        target, collider,
+                        obj_a, obj_b,
                         frame - 1, frame,
                         substeps,
                     )
                 else:
                     precise_frame = float(frame)
 
-                # Evaluate at the precise onset frame for position & velocity.
                 precise_int = int(precise_frame)
                 precise_sub = precise_frame - precise_int
                 scene.frame_set(precise_int, subframe=precise_sub)
                 depsgraph.update()
 
-                active_pos = collider.evaluated_get(depsgraph).matrix_world.translation.copy()
-                passive_bvh = _bvh_from_object(target, depsgraph)
-                contact = _contact_position(passive_bvh, active_pos) if passive_bvh else active_pos
+                pos_a = obj_a.evaluated_get(depsgraph).matrix_world.translation.copy()
+                pos_b = obj_b.evaluated_get(depsgraph).matrix_world.translation.copy()
 
-                # Velocity: step back half a sub-step to get a finite difference.
+                bvh_b_precise = _bvh_from_object(obj_b, depsgraph)
+                contact = _contact_position(bvh_b_precise, pos_a) if bvh_b_precise else pos_a
+
                 half_step = 0.5 / substeps
                 prev_t = max(precise_frame - half_step, scene.frame_start)
                 prev_int = int(prev_t)
                 prev_sub = prev_t - prev_int
                 scene.frame_set(prev_int, subframe=prev_sub)
                 depsgraph.update()
-                prev_active = collider.evaluated_get(depsgraph).matrix_world.translation.copy()
-                prev_passive = target.evaluated_get(depsgraph).matrix_world.translation.copy()
+                prev_a = obj_a.evaluated_get(depsgraph).matrix_world.translation.copy()
+                prev_b = obj_b.evaluated_get(depsgraph).matrix_world.translation.copy()
 
                 dt = (precise_frame - prev_t) / fps
                 if dt > 0:
-                    active_vel = (active_pos - prev_active) / dt
-                    passive_vel = (contact - prev_passive) / dt  # approximate
+                    vel_a = (pos_a - prev_a) / dt
+                    vel_b = (pos_b - prev_b) / dt
                 else:
-                    active_vel = cur_velocities.get(collider.name, Vector())
-                    passive_vel = cur_velocities.get(target.name, Vector())
-                rel_vel = active_vel - passive_vel
+                    vel_a = cur_velocities.get(obj_a.name, Vector())
+                    vel_b = cur_velocities.get(obj_b.name, Vector())
+                rel_vel = vel_a - vel_b
 
                 collision_events.append({
                     "frame": round(precise_frame, 4),
                     "time": round(precise_frame / fps, 6),
-                    "active": collider.name,
-                    "passive": target.name,
+                    "active": obj_a.name,
+                    "passive": obj_b.name,
                     "position": _round_vec(contact),
-                    "velocity": _round_vec(active_vel),
+                    "velocity": _round_vec(vel_a),
                     "relative_velocity": _round_vec(rel_vel),
                     "speed": round(rel_vel.length, 4),
                 })
 
-                # Restore to the current integer frame so the main loop continues.
                 scene.frame_set(frame)
                 depsgraph.update()
 
@@ -133,13 +127,11 @@ def detect_collisions(context):
     return collision_events
 
 
-def _bisect_onset(scene, depsgraph, target, collider, frame_lo, frame_hi, substeps):
+def _bisect_onset(scene, depsgraph, obj_a, obj_b, frame_lo, frame_hi, substeps):
     """Binary-search the sub-frame interval [frame_lo, frame_hi] for the
     earliest moment two objects begin overlapping."""
     lo = float(frame_lo)
     hi = float(frame_hi)
-    step = 1.0 / substeps
-    # Number of bisection iterations to reach the target sub-step resolution.
     import math
     iterations = max(1, int(math.ceil(math.log2(substeps))))
 
@@ -150,8 +142,8 @@ def _bisect_onset(scene, depsgraph, target, collider, frame_lo, frame_hi, subste
         scene.frame_set(mid_int, subframe=mid_sub)
         depsgraph.update()
 
-        bvh_a = _bvh_from_object(target, depsgraph)
-        bvh_b = _bvh_from_object(collider, depsgraph)
+        bvh_a = _bvh_from_object(obj_a, depsgraph)
+        bvh_b = _bvh_from_object(obj_b, depsgraph)
         if bvh_a is None or bvh_b is None:
             lo = mid
             continue
