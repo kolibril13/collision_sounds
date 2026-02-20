@@ -81,7 +81,11 @@ class VIEW3D_PT_add_sounds(bpy.types.Panel):
         row.operator("collision.readd_assigned_sounds", icon='FILE_REFRESH')
 
         layout.separator()
-        layout.operator("collision.clear_sounds", icon='TRASH')
+        row = layout.row(align=True)
+        row.operator("collision.clear_assignments", text="Clear Assignments",
+                     icon='X')
+        row.operator("collision.clear_sounds", text="Clear Sounds",
+                     icon='TRASH')
 
 
 class VIEW3D_PT_speed_volume(bpy.types.Panel):

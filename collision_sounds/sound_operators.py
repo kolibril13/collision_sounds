@@ -432,6 +432,26 @@ class COLLISION_OT_readd_assigned_sounds(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class COLLISION_OT_clear_assignments(bpy.types.Operator):
+    """Remove sound assignments from all collision points"""
+    bl_idname = "collision.clear_assignments"
+    bl_label = "Clear Assignments"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return len(_all_assigned_spheres()) > 0
+
+    def execute(self, context):
+        spheres = _all_assigned_spheres()
+        for obj in spheres:
+            for key in ("sound_folder", "sound_selection_mode", "sound_file"):
+                if key in obj:
+                    del obj[key]
+        self.report({'INFO'}, f"Cleared assignments from {len(spheres)} point(s)")
+        return {'FINISHED'}
+
+
 class COLLISION_OT_load_json_events(bpy.types.Operator):
     """Load collision events from a JSON file into the internal data"""
     bl_idname = "collision.load_json_events"
