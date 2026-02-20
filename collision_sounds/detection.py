@@ -20,8 +20,11 @@ def detect_collisions(context):
     so the detector matches what the physics solver considers a collision,
     even when mesh surfaces never truly interpenetrate (round objects, etc.).
 
-    In precision mode, once an onset is found between frame N-1 and N, a
-    binary search narrows down the exact sub-frame where contact begins.
+    Detection runs as two passes:
+      Pass 1 – scan every frame sequentially (never jumping) so the rigid-body
+               cache stays intact and all onsets are found.
+      Pass 2 – (precision mode only) revisit each onset to bisect the exact
+               sub-frame and recompute velocities at the precise moment.
 
     Returns a list of event dicts with frame, target/collider names,
     contact position, and velocities.
@@ -40,12 +43,20 @@ def detect_collisions(context):
     was_in_contact = {(t.name, c.name): False for t, c in pairs}
     prev_positions = {}
     collision_events = []
-    all_objects = {obj.name: obj for obj in set(targets + colliders)}
+    all_objects = {}
+    for obj in targets:
+        all_objects[obj.name] = obj
+    for obj in colliders:
+        all_objects[obj.name] = obj
 
     pair_thresholds = {}
     for target, collider in pairs:
         pair_thresholds[(target.name, collider.name)] = _collision_threshold(target, collider)
 
+    # ------------------------------------------------------------------
+    # Pass 1: sequential frame scan – no frame jumping so the rigid-body
+    # simulation cache is never invalidated.
+    # ------------------------------------------------------------------
     for frame in range(scene.frame_start, scene.frame_end + 1):
         scene.frame_set(frame)
         depsgraph.update()
@@ -81,49 +92,15 @@ def detect_collisions(context):
             key = (target.name, collider.name)
 
             if is_in_contact and not was_in_contact[key]:
-                if precision and frame > scene.frame_start:
-                    precise_frame = _bisect_onset(
-                        scene, depsgraph,
-                        target, collider,
-                        frame - 1, frame,
-                        substeps,
-                        threshold,
-                    )
-                else:
-                    precise_frame = float(frame)
-
-                precise_int = int(precise_frame)
-                precise_sub = precise_frame - precise_int
-                scene.frame_set(precise_int, subframe=precise_sub)
-                depsgraph.update()
-
-                pos_t = target.evaluated_get(depsgraph).matrix_world.translation.copy()
-                pos_c = collider.evaluated_get(depsgraph).matrix_world.translation.copy()
-
-                bvh_c_precise = _bvh_from_object(collider, depsgraph)
-                contact = _contact_position(bvh_c_precise, pos_t) if bvh_c_precise else pos_t
-
-                half_step = 0.5 / substeps
-                prev_t_frame = max(precise_frame - half_step, scene.frame_start)
-                prev_int = int(prev_t_frame)
-                prev_sub = prev_t_frame - prev_int
-                scene.frame_set(prev_int, subframe=prev_sub)
-                depsgraph.update()
-                prev_pos_t = target.evaluated_get(depsgraph).matrix_world.translation.copy()
-                prev_pos_c = collider.evaluated_get(depsgraph).matrix_world.translation.copy()
-
-                dt = (precise_frame - prev_t_frame) / fps
-                if dt > 0:
-                    vel_t = (pos_t - prev_pos_t) / dt
-                    vel_c = (pos_c - prev_pos_c) / dt
-                else:
-                    vel_t = cur_velocities.get(target.name, Vector())
-                    vel_c = cur_velocities.get(collider.name, Vector())
+                pos_t = cur_positions[target.name]
+                contact = _contact_position(bvh_c, pos_t) if bvh_c else pos_t
+                vel_t = cur_velocities.get(target.name, Vector())
+                vel_c = cur_velocities.get(collider.name, Vector())
                 rel_vel = vel_t - vel_c
 
                 collision_events.append({
-                    "frame": round(precise_frame, 4),
-                    "time": round(precise_frame / fps, 6),
+                    "frame": float(frame),
+                    "time": round(frame / fps, 6),
                     "target": target.name,
                     "collider": collider.name,
                     "position": _round_vec(contact),
@@ -132,14 +109,82 @@ def detect_collisions(context):
                     "speed": round(rel_vel.length, 4),
                 })
 
-                scene.frame_set(frame)
-                depsgraph.update()
-
             was_in_contact[key] = is_in_contact
 
         prev_positions = cur_positions
 
+    # ------------------------------------------------------------------
+    # Pass 2 (precision mode only): refine each onset to a sub-frame time
+    # and recompute velocities at that precise moment.
+    # ------------------------------------------------------------------
+    if precision and collision_events:
+        collision_events = _refine_events(
+            scene, depsgraph, collision_events, all_objects,
+            pair_thresholds, substeps, fps,
+        )
+
     return collision_events
+
+
+def _refine_events(scene, depsgraph, events, all_objects,
+                   pair_thresholds, substeps, fps):
+    """Revisit each onset and bisect for sub-frame precision."""
+    refined = []
+    for ev in events:
+        frame = int(ev["frame"])
+        target = all_objects[ev["target"]]
+        collider = all_objects[ev["collider"]]
+        threshold = pair_thresholds[(target.name, collider.name)]
+
+        if frame > scene.frame_start:
+            precise_frame = _bisect_onset(
+                scene, depsgraph, target, collider,
+                frame - 1, frame, substeps, threshold,
+            )
+        else:
+            precise_frame = float(frame)
+
+        precise_int = int(precise_frame)
+        precise_sub = precise_frame - precise_int
+        scene.frame_set(precise_int, subframe=precise_sub)
+        depsgraph.update()
+
+        pos_t = target.evaluated_get(depsgraph).matrix_world.translation.copy()
+        pos_c = collider.evaluated_get(depsgraph).matrix_world.translation.copy()
+
+        bvh_c = _bvh_from_object(collider, depsgraph)
+        contact = _contact_position(bvh_c, pos_t) if bvh_c else pos_t
+
+        half_step = 0.5 / substeps
+        prev_t = max(precise_frame - half_step, scene.frame_start)
+        prev_int = int(prev_t)
+        prev_sub = prev_t - prev_int
+        scene.frame_set(prev_int, subframe=prev_sub)
+        depsgraph.update()
+        prev_pos_t = target.evaluated_get(depsgraph).matrix_world.translation.copy()
+        prev_pos_c = collider.evaluated_get(depsgraph).matrix_world.translation.copy()
+
+        dt = (precise_frame - prev_t) / fps
+        if dt > 0:
+            vel_t = (pos_t - prev_pos_t) / dt
+            vel_c = (pos_c - prev_pos_c) / dt
+        else:
+            vel_t = Vector(ev["velocity"])
+            vel_c = Vector((0.0, 0.0, 0.0))
+        rel_vel = vel_t - vel_c
+
+        refined.append({
+            "frame": round(precise_frame, 4),
+            "time": round(precise_frame / fps, 6),
+            "target": target.name,
+            "collider": collider.name,
+            "position": _round_vec(contact),
+            "velocity": _round_vec(vel_t),
+            "relative_velocity": _round_vec(rel_vel),
+            "speed": round(rel_vel.length, 4),
+        })
+
+    return refined
 
 
 def _collision_threshold(obj_a, obj_b):
