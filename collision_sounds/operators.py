@@ -17,13 +17,20 @@ class COLLISION_OT_detect(bpy.types.Operator):
         settings = scene.collision_sounds
         original_frame = scene.frame_current
 
-        if settings.objects_collection is None:
-            self.report({'ERROR'}, "No interacting objects collection assigned")
+        if settings.targets_collection is None:
+            self.report({'ERROR'}, "No targets collection assigned")
+            return {'CANCELLED'}
+        if settings.colliders_collection is None:
+            self.report({'ERROR'}, "No colliders collection assigned")
             return {'CANCELLED'}
 
-        meshes = [o for o in settings.objects_collection.objects if o.type == 'MESH']
-        if len(meshes) < 2:
-            self.report({'ERROR'}, "Collection needs at least 2 mesh objects")
+        targets = [o for o in settings.targets_collection.objects if o.type == 'MESH']
+        colliders = [o for o in settings.colliders_collection.objects if o.type == 'MESH']
+        if not targets:
+            self.report({'ERROR'}, "Targets collection has no mesh objects")
+            return {'CANCELLED'}
+        if not colliders:
+            self.report({'ERROR'}, "Colliders collection has no mesh objects")
             return {'CANCELLED'}
 
         events = detection.detect_collisions(context)
@@ -35,8 +42,8 @@ class COLLISION_OT_detect(bpy.types.Operator):
             item = settings.events.add()
             item.frame = e["frame"]
             item.time = e["time"]
-            item.active = e["active"]
-            item.passive = e["passive"]
+            item.active = e["target"]
+            item.passive = e["collider"]
             item.position = e["position"]
             item.velocity = e["velocity"]
             item.relative_velocity = e["relative_velocity"]
@@ -56,7 +63,8 @@ class COLLISION_OT_detect(bpy.types.Operator):
                     "fps": fps,
                     "frame_start": scene.frame_start,
                     "frame_end": scene.frame_end,
-                    "objects_collection": settings.objects_collection.name,
+                    "targets_collection": settings.targets_collection.name,
+                    "colliders_collection": settings.colliders_collection.name,
                 },
                 "events": events,
             }

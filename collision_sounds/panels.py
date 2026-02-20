@@ -27,7 +27,8 @@ class VIEW3D_PT_detect_collisions(bpy.types.Panel):
         settings = scene.collision_sounds
         fps = scene.render.fps / scene.render.fps_base
 
-        layout.prop(settings, "objects_collection", icon='GROUP')
+        layout.prop(settings, "targets_collection", icon='GROUP')
+        layout.prop(settings, "colliders_collection", icon='GROUP')
 
         layout.separator()
         layout.prop(settings, "precision_mode")

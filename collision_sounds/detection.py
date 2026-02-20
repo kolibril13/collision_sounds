@@ -1,24 +1,29 @@
-from itertools import combinations
+import math
+from itertools import product
 
 import bpy
 from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 
-# Padding added to BVH nodes so that near-contact (typical of rigid body
-# sims where the solver prevents deep penetration) is still detected.
 COLLISION_EPSILON = 0.01
+DEFAULT_MARGIN = 0.04
 
 
 def detect_collisions(context):
     """Scan the full animation timeline and return collision onset events.
 
-    A collision onset is the first frame where two objects begin overlapping
-    (i.e. they were not overlapping on the previous frame).
+    Checks every (target, collider) pair each frame.  A collision onset is
+    the first frame where a target comes within contact distance of a
+    collider (i.e. they were farther apart on the previous frame).
+
+    Contact distance is derived from each object's rigid-body collision margin
+    so the detector matches what the physics solver considers a collision,
+    even when mesh surfaces never truly interpenetrate (round objects, etc.).
 
     In precision mode, once an onset is found between frame N-1 and N, a
     binary search narrows down the exact sub-frame where contact begins.
 
-    Returns a list of event dicts with frame, active/passive names,
+    Returns a list of event dicts with frame, target/collider names,
     contact position, and velocities.
     """
     scene = context.scene
@@ -28,13 +33,18 @@ def detect_collisions(context):
     precision = settings.precision_mode
     substeps = settings.substeps if precision else 1
 
-    objects = [obj for obj in settings.objects_collection.objects if obj.type == 'MESH']
-    pairs = list(combinations(objects, 2))
+    targets = [obj for obj in settings.targets_collection.objects if obj.type == 'MESH']
+    colliders = [obj for obj in settings.colliders_collection.objects if obj.type == 'MESH']
+    pairs = list(product(targets, colliders))
 
-    was_overlapping = {(a.name, b.name): False for a, b in pairs}
+    was_in_contact = {(t.name, c.name): False for t, c in pairs}
     prev_positions = {}
     collision_events = []
-    all_objects = {obj.name: obj for obj in objects}
+    all_objects = {obj.name: obj for obj in set(targets + colliders)}
+
+    pair_thresholds = {}
+    for target, collider in pairs:
+        pair_thresholds[(target.name, collider.name)] = _collision_threshold(target, collider)
 
     for frame in range(scene.frame_start, scene.frame_end + 1):
         scene.frame_set(frame)
@@ -56,23 +66,28 @@ def detect_collisions(context):
             if bvh is not None:
                 bvh_cache[name] = bvh
 
-        for obj_a, obj_b in pairs:
-            bvh_a = bvh_cache.get(obj_a.name)
-            bvh_b = bvh_cache.get(obj_b.name)
-            if bvh_a is None or bvh_b is None:
+        for target, collider in pairs:
+            bvh_t = bvh_cache.get(target.name)
+            bvh_c = bvh_cache.get(collider.name)
+            if bvh_t is None or bvh_c is None:
                 continue
 
-            overlaps = bvh_a.overlap(bvh_b)
-            is_overlapping = len(overlaps) > 0
-            key = (obj_a.name, obj_b.name)
+            threshold = pair_thresholds[(target.name, collider.name)]
+            is_in_contact = _surfaces_within_distance(
+                bvh_t, bvh_c,
+                cur_positions[target.name], cur_positions[collider.name],
+                threshold,
+            )
+            key = (target.name, collider.name)
 
-            if is_overlapping and not was_overlapping[key]:
+            if is_in_contact and not was_in_contact[key]:
                 if precision and frame > scene.frame_start:
                     precise_frame = _bisect_onset(
                         scene, depsgraph,
-                        obj_a, obj_b,
+                        target, collider,
                         frame - 1, frame,
                         substeps,
+                        threshold,
                     )
                 else:
                     precise_frame = float(frame)
@@ -82,37 +97,37 @@ def detect_collisions(context):
                 scene.frame_set(precise_int, subframe=precise_sub)
                 depsgraph.update()
 
-                pos_a = obj_a.evaluated_get(depsgraph).matrix_world.translation.copy()
-                pos_b = obj_b.evaluated_get(depsgraph).matrix_world.translation.copy()
+                pos_t = target.evaluated_get(depsgraph).matrix_world.translation.copy()
+                pos_c = collider.evaluated_get(depsgraph).matrix_world.translation.copy()
 
-                bvh_b_precise = _bvh_from_object(obj_b, depsgraph)
-                contact = _contact_position(bvh_b_precise, pos_a) if bvh_b_precise else pos_a
+                bvh_c_precise = _bvh_from_object(collider, depsgraph)
+                contact = _contact_position(bvh_c_precise, pos_t) if bvh_c_precise else pos_t
 
                 half_step = 0.5 / substeps
-                prev_t = max(precise_frame - half_step, scene.frame_start)
-                prev_int = int(prev_t)
-                prev_sub = prev_t - prev_int
+                prev_t_frame = max(precise_frame - half_step, scene.frame_start)
+                prev_int = int(prev_t_frame)
+                prev_sub = prev_t_frame - prev_int
                 scene.frame_set(prev_int, subframe=prev_sub)
                 depsgraph.update()
-                prev_a = obj_a.evaluated_get(depsgraph).matrix_world.translation.copy()
-                prev_b = obj_b.evaluated_get(depsgraph).matrix_world.translation.copy()
+                prev_pos_t = target.evaluated_get(depsgraph).matrix_world.translation.copy()
+                prev_pos_c = collider.evaluated_get(depsgraph).matrix_world.translation.copy()
 
-                dt = (precise_frame - prev_t) / fps
+                dt = (precise_frame - prev_t_frame) / fps
                 if dt > 0:
-                    vel_a = (pos_a - prev_a) / dt
-                    vel_b = (pos_b - prev_b) / dt
+                    vel_t = (pos_t - prev_pos_t) / dt
+                    vel_c = (pos_c - prev_pos_c) / dt
                 else:
-                    vel_a = cur_velocities.get(obj_a.name, Vector())
-                    vel_b = cur_velocities.get(obj_b.name, Vector())
-                rel_vel = vel_a - vel_b
+                    vel_t = cur_velocities.get(target.name, Vector())
+                    vel_c = cur_velocities.get(collider.name, Vector())
+                rel_vel = vel_t - vel_c
 
                 collision_events.append({
                     "frame": round(precise_frame, 4),
                     "time": round(precise_frame / fps, 6),
-                    "active": obj_a.name,
-                    "passive": obj_b.name,
+                    "target": target.name,
+                    "collider": collider.name,
                     "position": _round_vec(contact),
-                    "velocity": _round_vec(vel_a),
+                    "velocity": _round_vec(vel_t),
                     "relative_velocity": _round_vec(rel_vel),
                     "speed": round(rel_vel.length, 4),
                 })
@@ -120,19 +135,43 @@ def detect_collisions(context):
                 scene.frame_set(frame)
                 depsgraph.update()
 
-            was_overlapping[key] = is_overlapping
+            was_in_contact[key] = is_in_contact
 
         prev_positions = cur_positions
 
     return collision_events
 
 
-def _bisect_onset(scene, depsgraph, obj_a, obj_b, frame_lo, frame_hi, substeps):
+def _collision_threshold(obj_a, obj_b):
+    """Surface-distance threshold below which two objects count as in contact."""
+    margin_a = obj_a.rigid_body.collision_margin if obj_a.rigid_body else DEFAULT_MARGIN
+    margin_b = obj_b.rigid_body.collision_margin if obj_b.rigid_body else DEFAULT_MARGIN
+    return margin_a + margin_b + COLLISION_EPSILON
+
+
+def _surfaces_within_distance(bvh_a, bvh_b, pos_a, pos_b, threshold):
+    """Test whether the closest surface-to-surface gap is within *threshold*.
+
+    Uses a two-step nearest-point query (exact for convex objects): find the
+    closest point on B to A's centre, then the closest point on A back to
+    that location.  The distance between the two resulting surface points is
+    the approximate surface gap.
+    """
+    loc_on_b, _n, _i, _d = bvh_b.find_nearest(pos_a)
+    if loc_on_b is None:
+        return False
+    loc_on_a, _n, _i, _d = bvh_a.find_nearest(loc_on_b)
+    if loc_on_a is None:
+        return False
+    return (loc_on_a - loc_on_b).length <= threshold
+
+
+def _bisect_onset(scene, depsgraph, obj_a, obj_b, frame_lo, frame_hi,
+                  substeps, threshold):
     """Binary-search the sub-frame interval [frame_lo, frame_hi] for the
-    earliest moment two objects begin overlapping."""
+    earliest moment two objects come within contact distance."""
     lo = float(frame_lo)
     hi = float(frame_hi)
-    import math
     iterations = max(1, int(math.ceil(math.log2(substeps))))
 
     for _ in range(iterations):
@@ -148,8 +187,10 @@ def _bisect_onset(scene, depsgraph, obj_a, obj_b, frame_lo, frame_hi, substeps):
             lo = mid
             continue
 
-        overlaps = bvh_a.overlap(bvh_b)
-        if len(overlaps) > 0:
+        pos_a = obj_a.evaluated_get(depsgraph).matrix_world.translation.copy()
+        pos_b = obj_b.evaluated_get(depsgraph).matrix_world.translation.copy()
+
+        if _surfaces_within_distance(bvh_a, bvh_b, pos_a, pos_b, threshold):
             hi = mid
         else:
             lo = mid
