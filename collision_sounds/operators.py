@@ -35,7 +35,7 @@ class COLLISION_OT_detect(bpy.types.Operator):
             return {'CANCELLED'}
 
         start = time.time()
-        events = detection.detect_collisions(context)
+        events = detection.DetectionIntermediate(context).run_to_completion()
         end = time.time()
         print("detection took " + str(end - start))
 
