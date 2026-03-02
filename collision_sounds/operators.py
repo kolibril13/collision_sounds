@@ -1,3 +1,4 @@
+import time
 import json
 import os
 
@@ -33,7 +34,11 @@ class COLLISION_OT_detect(bpy.types.Operator):
             self.report({'ERROR'}, "Colliders collection has no mesh objects")
             return {'CANCELLED'}
 
+        start = time.time()
         events = detection.detect_collisions(context)
+        end = time.time()
+        print("detection took " + str(end - start))
+
         scene.frame_set(original_frame)
 
         # Store results in the blend-file-internal collection property.
