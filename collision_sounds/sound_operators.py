@@ -140,7 +140,7 @@ class COLLISION_OT_add_sounds(bpy.types.Operator):
         cam_data_cache = None
         if camera_obj:
             cam_data_cache = _precompute_camera_data(
-                context, events, camera_obj,
+                context, [Vector(e.position) for e in events], camera_obj,
             )
 
         # Ensure VSE exists.
@@ -205,6 +205,253 @@ class COLLISION_OT_add_sounds(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def _selected_collision_spheres(context):
+    return [obj for obj in context.selected_objects if "collision_frame" in obj]
+
+
+def _all_assigned_spheres():
+    from .debug_visualize import DEBUG_COLLECTION_NAME
+    if DEBUG_COLLECTION_NAME not in bpy.data.collections:
+        return []
+    col = bpy.data.collections[DEBUG_COLLECTION_NAME]
+    return [obj for obj in col.objects if "sound_folder" in obj]
+
+
+def _store_sound_assignment(obj, settings):
+    """Persist the current sound folder/mode on a collision sphere."""
+    obj["sound_folder"] = bpy.path.abspath(settings.sound_folder)
+    obj["sound_selection_mode"] = settings.sound_selection_mode
+    if settings.sound_selection_mode == 'SINGLE':
+        obj["sound_file"] = settings.sound_file
+
+
+def _validate_sound_settings(settings, report_fn):
+    """Check current panel sound settings. Returns (folder, single_path) or None."""
+    sound_folder = bpy.path.abspath(settings.sound_folder)
+    if not sound_folder or not os.path.isdir(sound_folder):
+        report_fn({'ERROR'}, "Select a valid sound folder first")
+        return None
+
+    available = get_sound_files_from_folder(sound_folder)
+    if not available:
+        report_fn({'ERROR'}, "No audio files found in the selected folder")
+        return None
+
+    single_path = None
+    if settings.sound_selection_mode == 'SINGLE':
+        if not settings.sound_file or settings.sound_file == 'NONE':
+            report_fn({'ERROR'}, "Select a sound file")
+            return None
+        single_path = os.path.join(sound_folder, settings.sound_file)
+        if not os.path.exists(single_path):
+            report_fn({'ERROR'}, f"Sound file not found: {single_path}")
+            return None
+
+    return sound_folder, single_path
+
+
+def _resolve_sound_path(obj):
+    """Pick a sound file path from the assignment stored on *obj*."""
+    folder = obj.get("sound_folder", "")
+    if not folder or not os.path.isdir(folder):
+        return None
+    available = get_sound_files_from_folder(folder)
+    if not available:
+        return None
+    mode = obj.get("sound_selection_mode", "RANDOM")
+    if mode == 'SINGLE':
+        fname = obj.get("sound_file", "")
+        path = os.path.join(folder, fname)
+        if os.path.exists(path):
+            return path
+    return os.path.join(folder, random.choice(available))
+
+
+def _add_strips_for_spheres(context, spheres, report_fn):
+    """Create VSE strips for *spheres* using their stored sound assignments.
+
+    Returns the number of strips created.
+    """
+    settings = context.scene.collision_sound_import
+    scene = context.scene
+
+    resolved = []
+    for obj in spheres:
+        path = _resolve_sound_path(obj)
+        if path:
+            resolved.append((obj, path))
+    if not resolved:
+        report_fn({'ERROR'}, "No valid sound assignments on the given points")
+        return 0
+
+    camera_obj = None
+    if settings.use_camera_volume_pan:
+        camera_obj = scene.camera
+        if not camera_obj:
+            report_fn({'ERROR'},
+                      "No active camera. Set one or disable Camera Distance option.")
+            return 0
+
+    speeds = [obj["collision_raw_speed"] for obj, _ in resolved]
+    min_speed = min(speeds)
+    max_speed = max(speeds)
+    speed_range = max_speed - min_speed if max_speed > min_speed else 1.0
+
+    cam_data_cache = None
+    if camera_obj:
+        positions = [Vector(obj["collision_position"]) for obj, _ in resolved]
+        cam_data_cache = _precompute_camera_data(context, positions, camera_obj)
+
+    seq_scene = _get_sequencer_scene(context)
+    if not seq_scene.sequence_editor:
+        seq_scene.sequence_editor_create()
+    sed = seq_scene.sequence_editor
+    base_channel = _find_next_available_channel(sed)
+
+    new_strips = []
+    color_map = {}
+    strip_obj_map = {}
+
+    for obj, sound_path in resolved:
+        speed = obj["collision_raw_speed"]
+        frame = obj["collision_frame"]
+        position = Vector(obj["collision_position"])
+        active = obj["collision_active"]
+        passive = obj["collision_passive"]
+
+        volume = 1.0
+        pan = 0.0
+
+        if settings.use_speed_volume:
+            t = (speed - min_speed) / speed_range if speed_range > 0 else 1.0
+            volume *= (settings.speed_volume_softer
+                       + t * (settings.speed_volume_louder - settings.speed_volume_softer))
+
+        if camera_obj and cam_data_cache:
+            cam_vol, cam_pan = _camera_volume_pan(
+                position, camera_obj, frame, cam_data_cache,
+            )
+            volume *= cam_vol
+            pan = cam_pan
+
+        if settings.use_volume_randomness:
+            volume = _random_volume(volume, settings.volume_randomness)
+
+        frame_int = int(round(frame))
+        vol_pct = int(round(volume * 100))
+        name = f"{active}_{passive}_v{vol_pct}"
+
+        strip = _add_sound_strip(sed, name, sound_path, base_channel, frame_int)
+
+        if hasattr(strip, 'volume'):
+            strip.volume = volume
+        if hasattr(strip, 'sound') and hasattr(strip.sound, 'use_mono'):
+            strip.sound.use_mono = True
+        if settings.use_camera_volume_pan and hasattr(strip, 'pan'):
+            strip.pan = pan
+
+        _apply_strip_color(strip, active, color_map)
+        strip_obj_map[strip] = active
+        new_strips.append(strip)
+
+    if new_strips:
+        _separate_overlapping_strips(new_strips, base_channel)
+        for strip in new_strips:
+            _apply_strip_color(strip, strip_obj_map[strip], color_map)
+
+    return len(new_strips)
+
+
+# ---- Selection-based operators ------------------------------------------------
+
+class COLLISION_OT_assign_sound(bpy.types.Operator):
+    """Remember the current sound folder for the selected collision points"""
+    bl_idname = "collision.assign_sound"
+    bl_label = "Assign Sound"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return len(_selected_collision_spheres(context)) > 0
+
+    def execute(self, context):
+        settings = context.scene.collision_sound_import
+        if _validate_sound_settings(settings, self.report) is None:
+            return {'CANCELLED'}
+
+        selected = _selected_collision_spheres(context)
+        for obj in selected:
+            _store_sound_assignment(obj, settings)
+
+        self.report({'INFO'}, f"Assigned sound to {len(selected)} point(s)")
+        return {'FINISHED'}
+
+
+class COLLISION_OT_assign_and_add_sound(bpy.types.Operator):
+    """Assign the current sound folder and immediately add VSE strips for the selection"""
+    bl_idname = "collision.assign_and_add_sound"
+    bl_label = "Assign & Add"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return len(_selected_collision_spheres(context)) > 0
+
+    def execute(self, context):
+        settings = context.scene.collision_sound_import
+        if _validate_sound_settings(settings, self.report) is None:
+            return {'CANCELLED'}
+
+        selected = _selected_collision_spheres(context)
+        for obj in selected:
+            _store_sound_assignment(obj, settings)
+
+        count = _add_strips_for_spheres(context, selected, self.report)
+        if count == 0:
+            return {'CANCELLED'}
+        self.report({'INFO'}, f"Assigned & added {count} sound strip(s)")
+        return {'FINISHED'}
+
+
+class COLLISION_OT_readd_assigned_sounds(bpy.types.Operator):
+    """Re-create VSE strips for all collision points that have a sound assigned"""
+    bl_idname = "collision.readd_assigned_sounds"
+    bl_label = "Re-add All Assigned"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return len(_all_assigned_spheres()) > 0
+
+    def execute(self, context):
+        spheres = _all_assigned_spheres()
+        count = _add_strips_for_spheres(context, spheres, self.report)
+        if count == 0:
+            return {'CANCELLED'}
+        self.report({'INFO'}, f"Re-added {count} sound strip(s)")
+        return {'FINISHED'}
+
+
+class COLLISION_OT_clear_assignments(bpy.types.Operator):
+    """Remove sound assignments from all collision points"""
+    bl_idname = "collision.clear_assignments"
+    bl_label = "Clear Assignments"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return len(_all_assigned_spheres()) > 0
+
+    def execute(self, context):
+        spheres = _all_assigned_spheres()
+        for obj in spheres:
+            for key in ("sound_folder", "sound_selection_mode", "sound_file"):
+                if key in obj:
+                    del obj[key]
+        self.report({'INFO'}, f"Cleared assignments from {len(spheres)} point(s)")
+        return {'FINISHED'}
+
+
 class COLLISION_OT_load_json_events(bpy.types.Operator):
     """Load collision events from a JSON file into the internal data"""
     bl_idname = "collision.load_json_events"
@@ -233,8 +480,8 @@ class COLLISION_OT_load_json_events(bpy.types.Operator):
             item = settings.events.add()
             item.frame = e.get("frame", 0)
             item.time = e.get("time", 0.0)
-            item.active = e.get("active", "")
-            item.passive = e.get("passive", "")
+            item.active = e.get("target", e.get("active", ""))
+            item.passive = e.get("collider", e.get("passive", ""))
             item.position = e.get("position", [0, 0, 0])
             item.velocity = e.get("velocity", [0, 0, 0])
             item.relative_velocity = e.get("relative_velocity", [0, 0, 0])
@@ -329,9 +576,8 @@ class COLLISION_OT_render_audio(bpy.types.Operator):
 # Camera helpers
 # ---------------------------------------------------------------------------
 
-def _precompute_camera_data(context, events, camera_obj):
+def _precompute_camera_data(context, positions, camera_obj):
     """Pre-compute distance range and horizontal FOV for camera-based volume."""
-    positions = [Vector(e.position) for e in events]
     cam_pos = camera_obj.matrix_world.translation
     distances = [(p - cam_pos).length for p in positions]
 

@@ -48,17 +48,44 @@ class VIEW3D_PT_add_sounds(bpy.types.Panel):
                 count = len(get_sound_files_from_folder(folder_path))
                 col.label(text=f"Will use {count} sound(s) randomly", icon='INFO')
 
-        # Add / clear sounds.
+        # Selection-based sound assignment.
         layout.separator()
-        if len(events) > 0:
-            layout.label(text=f"Using {len(events)} detected event(s)", icon='CHECKMARK')
+        selected_points = [
+            obj for obj in context.selected_objects
+            if "collision_frame" in obj
+        ]
+        num_selected = len(selected_points)
+        if num_selected > 0:
+            layout.label(text=f"{num_selected} collision point(s) selected",
+                         icon='RESTRICT_SELECT_OFF')
         else:
-            layout.label(text="Run Detect Collisions first", icon='ERROR')
+            layout.label(text="Select collision points in viewport",
+                         icon='RESTRICT_SELECT_ON')
+
         row = layout.row(align=True)
         row.scale_y = 1.3
-        row.enabled = len(events) > 0
-        row.operator("collision.add_sounds", icon='PLAY_SOUND')
-        layout.operator("collision.clear_sounds", icon='TRASH')
+        row.enabled = num_selected > 0
+        row.operator("collision.assign_sound", text="Assign", icon='PINNED')
+        row.operator("collision.assign_and_add_sound", text="Assign & Add",
+                     icon='PLAY_SOUND')
+
+        # Re-add all previously assigned sounds.
+        from .sound_operators import _all_assigned_spheres
+        num_assigned = len(_all_assigned_spheres())
+        layout.separator()
+        if num_assigned > 0:
+            layout.label(text=f"{num_assigned} point(s) have sounds assigned",
+                         icon='CHECKMARK')
+        row = layout.row(align=True)
+        row.enabled = num_assigned > 0
+        row.operator("collision.readd_assigned_sounds", icon='FILE_REFRESH')
+
+        layout.separator()
+        row = layout.row(align=True)
+        row.operator("collision.clear_assignments", text="Clear Assignments",
+                     icon='X')
+        row.operator("collision.clear_sounds", text="Clear Sounds",
+                     icon='TRASH')
 
 
 class VIEW3D_PT_speed_volume(bpy.types.Panel):

@@ -17,12 +17,12 @@ class CollisionEvent(bpy.types.PropertyGroup):
 class CollisionSoundsSettings(bpy.types.PropertyGroup):
     targets_collection: bpy.props.PointerProperty(
         name="Targets",
-        description="Collection of objects that hit things",
+        description="Collection of objects that hit things (e.g. falling balls)",
         type=bpy.types.Collection,
     )
     colliders_collection: bpy.props.PointerProperty(
         name="Colliders",
-        description="Collection of surfaces/objects that get hit",
+        description="Collection of surfaces/objects that get hit (e.g. ground, walls)",
         type=bpy.types.Collection,
     )
     events: bpy.props.CollectionProperty(

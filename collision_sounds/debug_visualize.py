@@ -55,6 +55,14 @@ class COLLISION_OT_debug_visualize(bpy.types.Operator):
 
             t = (event.speed - min_speed) / speed_range if speed_range > 0 else 0.0
             obj["collision_speed"] = t
+            obj["collision_frame"] = event.frame
+            obj["collision_time"] = event.time
+            obj["collision_active"] = event.active
+            obj["collision_passive"] = event.passive
+            obj["collision_position"] = list(event.position)
+            obj["collision_velocity"] = list(event.velocity)
+            obj["collision_rel_velocity"] = list(event.relative_velocity)
+            obj["collision_raw_speed"] = event.speed
             obj.data.materials.append(mat)
 
         self.report({'INFO'}, f"Created {len(events)} debug sphere(s)")

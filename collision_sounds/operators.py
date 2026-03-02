@@ -26,12 +26,11 @@ class COLLISION_OT_detect(bpy.types.Operator):
 
         targets = [o for o in settings.targets_collection.objects if o.type == 'MESH']
         colliders = [o for o in settings.colliders_collection.objects if o.type == 'MESH']
-
         if not targets:
-            self.report({'ERROR'}, "Targets collection contains no mesh objects")
+            self.report({'ERROR'}, "Targets collection has no mesh objects")
             return {'CANCELLED'}
         if not colliders:
-            self.report({'ERROR'}, "Colliders collection contains no mesh objects")
+            self.report({'ERROR'}, "Colliders collection has no mesh objects")
             return {'CANCELLED'}
 
         events = detection.detect_collisions(context)
@@ -43,8 +42,8 @@ class COLLISION_OT_detect(bpy.types.Operator):
             item = settings.events.add()
             item.frame = e["frame"]
             item.time = e["time"]
-            item.active = e["active"]
-            item.passive = e["passive"]
+            item.active = e["target"]
+            item.passive = e["collider"]
             item.position = e["position"]
             item.velocity = e["velocity"]
             item.relative_velocity = e["relative_velocity"]
