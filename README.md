@@ -6,4 +6,4 @@ Detect collisions
 
 # for dev:
 
-/Applications/Blender.app/Contents/MacOS/blender --background --command extension build --source-dir /Users/jan-hendrik/projects/collision_sounds --output-dir /Users/jan-hendrik/projects/collision_sounds
+/Applications/Blender.app/Contents/MacOS/blender --background --command extension build --source-dir /Users/jan-hendrik/projects/collision_sounds/collision_sounds --output-dir /Users/jan-hendrik/projects/collision_sounds
