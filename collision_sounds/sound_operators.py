@@ -210,10 +210,10 @@ def _selected_collision_spheres(context):
 
 
 def _all_assigned_spheres():
-    from .debug_visualize import DEBUG_COLLECTION_NAME
-    if DEBUG_COLLECTION_NAME not in bpy.data.collections:
+    from .visualize_collisions import VIS_COLLECTION_NAME
+    if VIS_COLLECTION_NAME not in bpy.data.collections:
         return []
-    col = bpy.data.collections[DEBUG_COLLECTION_NAME]
+    col = bpy.data.collections[VIS_COLLECTION_NAME]
     return [obj for obj in col.objects if "sound_folder" in obj]
 
 

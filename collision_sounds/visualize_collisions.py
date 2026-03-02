@@ -1,23 +1,23 @@
-"""Debug visualization: place colored spheres at collision contact points.
+"""Visualize collisions: place colored spheres at collision contact points.
 
 Color is mapped from collision speed via a single shared material that reads
 each object's ``collision_speed`` custom property through an Attribute node
 and a Color Ramp (blue = slow, red = fast).  All generated objects are placed in a
-"Debug Collisions" collection so they can be toggled or deleted easily.
+"Collision Visualization" collection so they can be toggled or deleted easily.
 """
 
 import bpy
 import mathutils
 
-DEBUG_COLLECTION_NAME = "Debug Collisions"
-SPEED_MATERIAL_NAME = "dbg_collision_speed"
+VIS_COLLECTION_NAME = "Collision Visualization"
+SPEED_MATERIAL_NAME = "collision_vis_speed"
 SPHERE_RADIUS = 0.15
 
 
-class COLLISION_OT_debug_visualize(bpy.types.Operator):
-    bl_idname = "collision.debug_visualize"
+class COLLISION_OT_visualize_collisions(bpy.types.Operator):
+    bl_idname = "collision.visualize_collisions"
     bl_label = "Visualize Collisions"
-    bl_description = "Place colored spheres at each detected collision point (debug)"
+    bl_description = "Place colored spheres at each detected collision point"
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
@@ -30,8 +30,8 @@ class COLLISION_OT_debug_visualize(bpy.types.Operator):
             self.report({'WARNING'}, "No collision events to visualize")
             return {'CANCELLED'}
 
-        debug_col = _get_or_create_collection(DEBUG_COLLECTION_NAME)
-        _clear_collection(debug_col)
+        vis_col = _get_or_create_collection(VIS_COLLECTION_NAME)
+        _clear_collection(vis_col)
 
         speeds = [e.speed for e in events]
         min_speed = min(speeds)
@@ -41,10 +41,10 @@ class COLLISION_OT_debug_visualize(bpy.types.Operator):
         mat = _get_or_create_speed_material()
 
         for i, event in enumerate(events):
-            name = f"dbg_{event.active}_{event.passive}_f{event.frame}"
+            name = f"vis_{event.active}_{event.passive}_f{event.frame}"
             mesh = bpy.data.meshes.new(name)
             obj = bpy.data.objects.new(name, mesh)
-            debug_col.objects.link(obj)
+            vis_col.objects.link(obj)
 
             bm = _icosphere_bmesh(radius=SPHERE_RADIUS, subdivisions=2)
             bm.to_mesh(mesh)
@@ -65,28 +65,28 @@ class COLLISION_OT_debug_visualize(bpy.types.Operator):
             obj["collision_raw_speed"] = event.speed
             obj.data.materials.append(mat)
 
-        self.report({'INFO'}, f"Created {len(events)} debug sphere(s)")
+        self.report({'INFO'}, f"Created {len(events)} collision sphere(s)")
         return {'FINISHED'}
 
 
-class COLLISION_OT_debug_clear(bpy.types.Operator):
-    bl_idname = "collision.debug_clear"
+class COLLISION_OT_clear_visualization(bpy.types.Operator):
+    bl_idname = "collision.clear_visualization"
     bl_label = "Clear Visualization"
-    bl_description = "Remove all debug collision spheres"
+    bl_description = "Remove all collision visualization spheres"
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
     def poll(cls, context):
-        return DEBUG_COLLECTION_NAME in bpy.data.collections
+        return VIS_COLLECTION_NAME in bpy.data.collections
 
     def execute(self, context):
-        if DEBUG_COLLECTION_NAME in bpy.data.collections:
-            col = bpy.data.collections[DEBUG_COLLECTION_NAME]
+        if VIS_COLLECTION_NAME in bpy.data.collections:
+            col = bpy.data.collections[VIS_COLLECTION_NAME]
             _clear_collection(col)
             bpy.data.collections.remove(col)
         if SPEED_MATERIAL_NAME in bpy.data.materials:
             bpy.data.materials.remove(bpy.data.materials[SPEED_MATERIAL_NAME])
-        self.report({'INFO'}, "Cleared debug visualization")
+        self.report({'INFO'}, "Cleared collision visualization")
         return {'FINISHED'}
 
 
