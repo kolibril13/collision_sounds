@@ -6,6 +6,7 @@ import bpy
 
 from . import detection
 
+DETECTION_INTERMEDIATE = None
 
 class COLLISION_OT_detect(bpy.types.Operator):
     bl_idname = "collision.detect"
@@ -16,7 +17,6 @@ class COLLISION_OT_detect(bpy.types.Operator):
     def execute(self, context):
         scene = context.scene
         settings = scene.collision_sounds
-        original_frame = scene.frame_current
 
         if settings.targets_collection is None:
             self.report({'ERROR'}, "No targets collection assigned")
@@ -34,12 +34,50 @@ class COLLISION_OT_detect(bpy.types.Operator):
             self.report({'ERROR'}, "Colliders collection has no mesh objects")
             return {'CANCELLED'}
 
-        start = time.time()
-        events = detection.DetectionIntermediate(context).run_to_completion()
-        end = time.time()
-        print("detection took " + str(end - start))
+        global DETECTION_INTERMEDIATE
+        DETECTION_INTERMEDIATE = detection.DetectionIntermediate(context)
+        bpy.ops.collision.detect_modal("INVOKE_DEFAULT")
 
-        scene.frame_set(original_frame)
+        return {'FINISHED'}
+
+
+
+class COLLISION_OT_detect_modal(bpy.types.Operator):
+    bl_idname = "collision.detect_modal"
+    bl_label = "Detect Collisions Modal"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    _timer = None
+
+    def invoke(self, context, event):
+        self._timer = context.window_manager.event_timer_add(
+            time_step=0, window=context.window
+        )
+        context.window_manager.progress_begin(context.scene.frame_start, context.scene.frame_end)
+        context.window_manager.modal_handler_add(self)
+        return {"RUNNING_MODAL"}
+
+    def modal(self, context, event):
+        global DETECTION_INTERMEDIATE
+        assert isinstance(DETECTION_INTERMEDIATE, detection.DetectionIntermediate)
+
+        scene = context.scene
+        settings = scene.collision_sounds
+
+        if event.type in {"RIGHTMOUSE", "ESC"}:
+            context.window_manager.event_timer_remove(self._timer)
+            DETECTION_INTERMEDIATE = None
+            self.report({"WARNING"}, "User cancellation.")
+            return {'FINISHED'}
+
+        events = DETECTION_INTERMEDIATE.step()
+        if events is None:
+            context.window_manager.progress_update(scene.frame_current)
+            return {"RUNNING_MODAL"}
+
+        context.scene.frame_set(DETECTION_INTERMEDIATE.original_frame)
+        DETECTION_INTERMEDIATE = None
+        context.window_manager.progress_end()
 
         # Store results in the blend-file-internal collection property.
         settings.events.clear()

@@ -31,6 +31,8 @@ class DetectionIntermediate:
     """
 
     def __init__(self, context):
+        self.original_frame = context.scene.frame_current
+
         self.scene = context.scene
         self.settings = self.scene.collision_sounds
         self.depsgraph = context.evaluated_depsgraph_get()
