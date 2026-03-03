@@ -152,18 +152,3 @@ class VIEW3D_PT_randomize_volume(bpy.types.Panel):
         col.prop(settings, "volume_randomness", text="Amount", slider=True)
 
 
-class VIEW3D_PT_render_audio(bpy.types.Panel):
-    bl_label = "Render Audio"
-    bl_idname = "VIEW3D_PT_render_audio"
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category = "Collision Sounds"
-    bl_parent_id = "VIEW3D_PT_add_sounds"
-    bl_options = {'DEFAULT_CLOSED'}
-    bl_order = 4
-
-    def draw(self, context):
-        layout = self.layout
-        row = layout.row(align=True)
-        row.scale_y = 1.3
-        row.operator("collision.render_audio", text="Render Audio", icon='FILE_SOUND')

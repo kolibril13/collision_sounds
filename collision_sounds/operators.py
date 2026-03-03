@@ -194,6 +194,36 @@ class VIEW3D_PT_collision_sounds(bpy.types.Panel):
         pass
 
 
+class VIEW3D_PT_export(bpy.types.Panel):
+    bl_label = "Export"
+    bl_idname = "VIEW3D_PT_export"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "Collision Sounds"
+    bl_parent_id = "VIEW3D_PT_collision_sounds"
+    bl_order = 3
+    bl_options = {'DEFAULT_CLOSED'}
+
+    def draw(self, context):
+        layout = self.layout
+        scene = context.scene
+        settings = scene.collision_sounds
+
+        layout.prop(settings, "output_path")
+        layout.prop(settings, "export_json", text="Export when detecting")
+        layout.separator()
+        row = layout.row()
+        row.enabled = len(settings.events) > 0
+        row.operator("collision.export_json", text="Export JSON", icon='EXPORT')
+        if len(settings.events) == 0:
+            layout.label(text="Run detection first", icon='INFO')
+
+        layout.separator()
+        row = layout.row(align=True)
+        row.scale_y = 1.3
+        row.operator("collision.render_audio", text="Render Audio", icon='FILE_SOUND')
+
+
 class VIEW3D_PT_detect_collisions(bpy.types.Panel):
     bl_label = "Detect Collisions"
     bl_idname = "VIEW3D_PT_detect_collisions"
@@ -230,27 +260,3 @@ class VIEW3D_PT_detect_collisions(bpy.types.Panel):
             layout.separator()
             layout.label(text=f"{len(settings.events)} event(s) detected")
 
-
-class VIEW3D_PT_export_json(bpy.types.Panel):
-    bl_label = "Export JSON"
-    bl_idname = "VIEW3D_PT_export_json"
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category = "Collision Sounds"
-    bl_parent_id = "VIEW3D_PT_collision_sounds"
-    bl_options = {'DEFAULT_CLOSED'}
-    bl_order = 1
-
-    def draw(self, context):
-        layout = self.layout
-        scene = context.scene
-        settings = scene.collision_sounds
-
-        layout.prop(settings, "output_path")
-        layout.prop(settings, "export_json", text="Export when detecting")
-        layout.separator()
-        row = layout.row()
-        row.enabled = len(settings.events) > 0
-        row.operator("collision.export_json", icon='EXPORT')
-        if len(settings.events) == 0:
-            layout.label(text="Run detection first", icon='INFO')
