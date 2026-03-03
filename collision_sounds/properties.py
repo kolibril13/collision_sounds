@@ -42,8 +42,8 @@ class CollisionSoundsSettings(bpy.types.PropertyGroup):
         max=64,
     )
     export_json: bpy.props.BoolProperty(
-        name="Export JSON",
-        description="Also write collision events to a JSON file",
+        name="Export when detecting",
+        description="Automatically write collision events to the output path when running detection",
         default=False,
     )
     output_path: bpy.props.StringProperty(

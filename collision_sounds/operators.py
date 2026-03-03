@@ -125,3 +125,146 @@ class COLLISION_OT_detect_modal(bpy.types.Operator):
             self.report({'INFO'}, f"Found {len(events)} collision event(s)")
 
         return {'FINISHED'}
+
+
+def _events_to_export_list(settings):
+    """Build list of event dicts from stored settings.events (same format as detection output)."""
+    return [
+        {
+            "frame": e.frame,
+            "time": e.time,
+            "target": e.active,
+            "collider": e.passive,
+            "position": list(e.position),
+            "velocity": list(e.velocity),
+            "relative_velocity": list(e.relative_velocity),
+            "speed": e.speed,
+        }
+        for e in settings.events
+    ]
+
+
+class COLLISION_OT_export_json(bpy.types.Operator):
+    bl_idname = "collision.export_json"
+    bl_label = "Export JSON"
+    bl_description = "Export current collision events to a JSON file (run after detection)"
+    bl_options = {'REGISTER'}
+
+    def execute(self, context):
+        scene = context.scene
+        settings = scene.collision_sounds
+        filepath = bpy.path.abspath(settings.output_path)
+        if not filepath:
+            self.report({'ERROR'}, "No output path set")
+            return {'CANCELLED'}
+
+        events = _events_to_export_list(settings)
+        fps = scene.render.fps / scene.render.fps_base
+        output = {
+            "metadata": {
+                "epsilon": detection.COLLISION_EPSILON,
+                "fps": fps,
+                "frame_start": scene.frame_start,
+                "frame_end": scene.frame_end,
+                "targets_collection": settings.targets_collection.name if settings.targets_collection else "",
+                "colliders_collection": settings.colliders_collection.name if settings.colliders_collection else "",
+            },
+            "events": events,
+        }
+
+        os.makedirs(os.path.dirname(filepath) or ".", exist_ok=True)
+        with open(filepath, "w") as f:
+            json.dump(output, f, indent=2)
+
+        self.report({'INFO'}, f"Exported {len(events)} event(s) to {filepath}")
+        return {'FINISHED'}
+
+
+# --- Panels (UI for the operators above) ---
+
+
+class VIEW3D_PT_collision_sounds(bpy.types.Panel):
+    bl_label = "Collision Sounds"
+    bl_idname = "VIEW3D_PT_collision_sounds"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "Collision Sounds"
+
+    def draw(self, context):
+        pass
+
+
+class VIEW3D_PT_detect_collisions(bpy.types.Panel):
+    bl_label = "Detect Collisions"
+    bl_idname = "VIEW3D_PT_detect_collisions"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "Collision Sounds"
+    bl_parent_id = "VIEW3D_PT_collision_sounds"
+    bl_order = 0
+
+    def draw(self, context):
+        layout = self.layout
+        scene = context.scene
+        settings = scene.collision_sounds
+        fps = scene.render.fps / scene.render.fps_base
+
+        layout.prop(settings, "targets_collection", icon='GROUP')
+        layout.prop(settings, "colliders_collection", icon='GROUP')
+
+        layout.separator()
+        layout.prop(settings, "precision_mode")
+        if settings.precision_mode:
+            layout.prop(settings, "substeps")
+            accuracy_ms = 1000.0 / (fps * settings.substeps)
+            col = layout.column(align=True)
+            col.label(text=f"FPS: {fps:g}  |  Accuracy: {accuracy_ms:.2f} ms")
+            if accuracy_ms > 5.0:
+                col.label(text="Human perception is ~5 ms", icon='INFO')
+
+        layout.separator()
+        layout.operator("collision.detect", icon='PLAY')
+
+        if len(settings.events) > 0:
+            layout.separator()
+            layout.label(text=f"{len(settings.events)} event(s) detected")
+
+
+class VIEW3D_PT_export_json(bpy.types.Panel):
+    bl_label = "Export JSON"
+    bl_idname = "VIEW3D_PT_export_json"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "Collision Sounds"
+    bl_parent_id = "VIEW3D_PT_collision_sounds"
+    bl_options = {'DEFAULT_CLOSED'}
+    bl_order = 1
+
+    def draw(self, context):
+        layout = self.layout
+        scene = context.scene
+        settings = scene.collision_sounds
+
+        layout.prop(settings, "output_path")
+        layout.prop(settings, "export_json", text="Export when detecting")
+        layout.separator()
+        row = layout.row()
+        row.enabled = len(settings.events) > 0
+        row.operator("collision.export_json", icon='EXPORT')
+        if len(settings.events) == 0:
+            layout.label(text="Run detection first", icon='INFO')
+
+
+class VIEW3D_PT_debug(bpy.types.Panel):
+    bl_label = "Visualize Collisions"
+    bl_idname = "VIEW3D_PT_debug"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "Collision Sounds"
+    bl_parent_id = "VIEW3D_PT_collision_sounds"
+    bl_options = {'DEFAULT_CLOSED'}
+    bl_order = 2
+
+    def draw(self, context):
+        layout = self.layout
+        layout.operator("collision.clear_visualization", icon='TRASH')
