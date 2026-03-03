@@ -1,9 +1,9 @@
 """Visualize collisions: place colored spheres at collision contact points.
 
-Color is mapped from collision speed via a single shared material that reads
-each object's ``collision_speed`` custom property through an Attribute node
-and a Color Ramp (blue = slow, red = fast).  All generated objects are placed in a
-"Collision Visualization" collection so they can be toggled or deleted easily.
+Color and size are mapped from collision speed: blue = slow (small spheres),
+red = fast (large spheres).  A shared material reads each object's
+``collision_speed`` custom property (Attribute node + Color Ramp).  All generated
+objects are in the "Collision Visualization" collection.
 """
 
 import bpy
@@ -11,7 +11,8 @@ import mathutils
 
 VIS_COLLECTION_NAME = "Collision Visualization"
 SPEED_MATERIAL_NAME = "collision_vis_speed"
-SPHERE_RADIUS = 0.15
+SPHERE_RADIUS_SLOW = 0.16   # radius for slow collisions (blue)
+SPHERE_RADIUS_FAST = 0.50   # radius for fast collisions (red)
 
 
 class COLLISION_OT_visualize_collisions(bpy.types.Operator):
@@ -46,14 +47,15 @@ class COLLISION_OT_visualize_collisions(bpy.types.Operator):
             obj = bpy.data.objects.new(name, mesh)
             vis_col.objects.link(obj)
 
-            bm = _icosphere_bmesh(radius=SPHERE_RADIUS, subdivisions=2)
+            t = (event.speed - min_speed) / speed_range if speed_range > 0 else 0.0
+            radius = SPHERE_RADIUS_SLOW + t * (SPHERE_RADIUS_FAST - SPHERE_RADIUS_SLOW)
+            bm = _icosphere_bmesh(radius=radius, subdivisions=2)
             bm.to_mesh(mesh)
             bm.free()
 
             obj.location = mathutils.Vector(event.position)
             obj.show_in_front = True
 
-            t = (event.speed - min_speed) / speed_range if speed_range > 0 else 0.0
             obj["collision_speed"] = t
             obj["collision_frame"] = event.frame
             obj["collision_time"] = event.time
