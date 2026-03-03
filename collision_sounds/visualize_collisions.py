@@ -1,16 +1,16 @@
 """Visualize collisions: place colored spheres at collision contact points.
 
-Color and size are mapped from collision speed: blue = slow (small spheres),
-red = fast (large spheres).  A shared material reads each object's
-``collision_speed`` custom property (Attribute node + Color Ramp).  All generated
-objects are in the "Audio Markers" collection.
+Size is mapped from collision speed.  Color comes from ``obj.color`` (set when
+the sphere is assigned to an audio group) via an Object Info → Emission material.
+All generated objects are in the "Audio Markers" collection.
 """
 
 import bpy
 import mathutils
 
 VIS_COLLECTION_NAME = "Audio Markers"
-SPEED_MATERIAL_NAME = "collision_vis_speed"
+SPEED_MATERIAL_NAME = "collision_vis_speed"   # legacy name kept so old materials are cleaned up
+VIS_MATERIAL_NAME = "collision_vis_group"
 SPHERE_RADIUS_SLOW = 0.16   # radius for slow collisions (blue)
 SPHERE_RADIUS_FAST = 0.50   # radius for fast collisions (red)
 
@@ -39,7 +39,7 @@ class COLLISION_OT_visualize_collisions(bpy.types.Operator):
         max_speed = max(speeds)
         speed_range = max_speed - min_speed
 
-        mat = _get_or_create_speed_material()
+        mat = _get_or_create_vis_material()
 
         for i, event in enumerate(events):
             name = f"vis_{event.active}_{event.passive}_f{event.frame}"
@@ -86,8 +86,9 @@ class COLLISION_OT_clear_visualization(bpy.types.Operator):
             col = bpy.data.collections[VIS_COLLECTION_NAME]
             _clear_collection(col)
             bpy.data.collections.remove(col)
-        if SPEED_MATERIAL_NAME in bpy.data.materials:
-            bpy.data.materials.remove(bpy.data.materials[SPEED_MATERIAL_NAME])
+        for mat_name in (SPEED_MATERIAL_NAME, VIS_MATERIAL_NAME):
+            if mat_name in bpy.data.materials:
+                bpy.data.materials.remove(bpy.data.materials[mat_name])
         self.report({'INFO'}, "Cleared collision visualization")
         return {'FINISHED'}
 
@@ -109,39 +110,30 @@ def _clear_collection(col):
             bpy.data.meshes.remove(mesh)
 
 
-def _get_or_create_speed_material():
-    """Shared emissive material: Attribute (collision_speed) → Color Ramp → Emission.
+def _get_or_create_vis_material():
+    """Shared emissive material: Object Info → Color → Emission.
 
-    Each object stores its normalized speed (0-1) as the custom property
-    ``collision_speed``.  An Attribute node (Instancer) reads that value and
-    a Color Ramp maps 0 → blue, 1 → red.
+    Each sphere's ``obj.color`` is set to the audio group's color when assigned,
+    so the viewport color reflects the group without needing per-object materials.
     """
-    if SPEED_MATERIAL_NAME in bpy.data.materials:
-        return bpy.data.materials[SPEED_MATERIAL_NAME]
+    if VIS_MATERIAL_NAME in bpy.data.materials:
+        return bpy.data.materials[VIS_MATERIAL_NAME]
 
-    mat = bpy.data.materials.new(SPEED_MATERIAL_NAME)
+    mat = bpy.data.materials.new(VIS_MATERIAL_NAME)
     mat.use_nodes = True
     tree = mat.node_tree
     tree.nodes.clear()
 
-    attr = tree.nodes.new("ShaderNodeAttribute")
-    attr.location = (-400, 0)
-    attr.attribute_type = 'INSTANCER'
-    attr.attribute_name = "collision_speed"
-
-    color_ramp = tree.nodes.new("ShaderNodeValToRGB")
-    color_ramp.location = (-150, 0)
-    color_ramp.color_ramp.elements[0].color = (0.0, 0.0, 1.0, 1.0)
-    color_ramp.color_ramp.elements[1].color = (1.0, 0.0, 0.0, 1.0)
-    tree.links.new(attr.outputs["Fac"], color_ramp.inputs["Fac"])
+    obj_info = tree.nodes.new("ShaderNodeObjectInfo")
+    obj_info.location = (-200, 0)
 
     emission = tree.nodes.new("ShaderNodeEmission")
-    emission.location = (150, 0)
+    emission.location = (100, 0)
     emission.inputs["Strength"].default_value = 3.0
-    tree.links.new(color_ramp.outputs["Color"], emission.inputs["Color"])
+    tree.links.new(obj_info.outputs["Color"], emission.inputs["Color"])
 
     output = tree.nodes.new("ShaderNodeOutputMaterial")
-    output.location = (350, 0)
+    output.location = (320, 0)
     tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
 
     return mat

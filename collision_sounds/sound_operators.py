@@ -6,7 +6,20 @@ import random
 import bpy
 from mathutils import Vector
 
-from .sound_properties import get_sound_files_from_folder
+from .sound_properties import get_sound_files_from_folder, AUDIO_GROUP_COLOR_ITEMS
+
+# RGB values matching Blender's STRIP_COLOR_01–09 (linear color space).
+GROUP_COLORS = {
+    'COLOR_01': (0.90, 0.26, 0.26, 1.0),  # Red
+    'COLOR_02': (0.87, 0.56, 0.16, 1.0),  # Orange
+    'COLOR_03': (0.80, 0.74, 0.11, 1.0),  # Yellow
+    'COLOR_04': (0.36, 0.75, 0.32, 1.0),  # Green
+    'COLOR_05': (0.22, 0.54, 0.87, 1.0),  # Blue
+    'COLOR_06': (0.54, 0.32, 0.87, 1.0),  # Purple
+    'COLOR_07': (0.87, 0.43, 0.67, 1.0),  # Pink
+    'COLOR_08': (0.62, 0.42, 0.24, 1.0),  # Brown
+    'COLOR_09': (0.50, 0.50, 0.50, 1.0),  # Gray
+}
 
 
 # ---------------------------------------------------------------------------
@@ -214,15 +227,12 @@ def _all_assigned_spheres():
     if VIS_COLLECTION_NAME not in bpy.data.collections:
         return []
     col = bpy.data.collections[VIS_COLLECTION_NAME]
-    return [obj for obj in col.objects if "sound_folder" in obj]
+    return [obj for obj in col.objects if "audio_group_id" in obj]
 
 
-def _store_sound_assignment(obj, settings):
-    """Persist the current sound folder/mode on a collision sphere."""
-    obj["sound_folder"] = bpy.path.abspath(settings.sound_folder)
-    obj["sound_selection_mode"] = settings.sound_selection_mode
-    if settings.sound_selection_mode == 'SINGLE':
-        obj["sound_file"] = settings.sound_file
+def _store_group_assignment(obj, group_id):
+    """Persist the audio group ID on a collision sphere."""
+    obj["audio_group_id"] = group_id
 
 
 def _validate_sound_settings(settings, report_fn):
@@ -250,25 +260,32 @@ def _validate_sound_settings(settings, report_fn):
     return sound_folder, single_path
 
 
-def _resolve_sound_path(obj):
-    """Pick a sound file path from the assignment stored on *obj*."""
-    folder = obj.get("sound_folder", "")
+def _resolve_group_sound_path(obj, context):
+    """Pick a sound file path from the group assignment stored on *obj*."""
+    group_id = obj.get("audio_group_id", None)
+    if group_id is None:
+        return None
+    settings = context.scene.collision_sound_import
+    group = next((g for g in settings.audio_groups if g.group_id == group_id), None)
+    if group is None:
+        return None
+    folder = bpy.path.abspath(group.sound_folder)
     if not folder or not os.path.isdir(folder):
         return None
     available = get_sound_files_from_folder(folder)
     if not available:
         return None
-    mode = obj.get("sound_selection_mode", "RANDOM")
-    if mode == 'SINGLE':
-        fname = obj.get("sound_file", "")
-        path = os.path.join(folder, fname)
-        if os.path.exists(path):
-            return path
+    if group.sound_selection_mode == 'SINGLE':
+        fname = group.sound_file
+        if fname and fname != 'NONE':
+            path = os.path.join(folder, fname)
+            if os.path.exists(path):
+                return path
     return os.path.join(folder, random.choice(available))
 
 
 def _add_strips_for_spheres(context, spheres, report_fn):
-    """Create VSE strips for *spheres* using their stored sound assignments.
+    """Create VSE strips for *spheres* using their stored group assignments.
 
     Returns the number of strips created.
     """
@@ -277,7 +294,7 @@ def _add_strips_for_spheres(context, spheres, report_fn):
 
     resolved = []
     for obj in spheres:
-        path = _resolve_sound_path(obj)
+        path = _resolve_group_sound_path(obj, context)
         if path:
             resolved.append((obj, path))
     if not resolved:
@@ -309,8 +326,6 @@ def _add_strips_for_spheres(context, spheres, report_fn):
     base_channel = _find_next_available_channel(sed)
 
     new_strips = []
-    color_map = {}
-    strip_obj_map = {}
 
     for obj, sound_path in resolved:
         speed = obj["collision_raw_speed"]
@@ -350,71 +365,175 @@ def _add_strips_for_spheres(context, spheres, report_fn):
         if settings.use_camera_volume_pan and hasattr(strip, 'pan'):
             strip.pan = pan
 
-        _apply_strip_color(strip, active, color_map)
-        strip_obj_map[strip] = active
+        # Apply the audio group's color to the strip.
+        group_id = obj.get("audio_group_id")
+        if group_id is not None:
+            group = next((g for g in settings.audio_groups if g.group_id == group_id), None)
+            if group and hasattr(strip, 'color_tag'):
+                strip.color_tag = group.color
+
         new_strips.append(strip)
 
     if new_strips:
         _separate_overlapping_strips(new_strips, base_channel)
-        for strip in new_strips:
-            _apply_strip_color(strip, strip_obj_map[strip], color_map)
 
     return len(new_strips)
 
 
-# ---- Selection-based operators ------------------------------------------------
+# ---- Audio group operators ------------------------------------------------
 
-class COLLISION_OT_assign_sound(bpy.types.Operator):
-    """Remember the current sound folder for the selected collision points"""
-    bl_idname = "collision.assign_sound"
-    bl_label = "Assign Sound"
+class COLLISION_OT_add_audio_group(bpy.types.Operator):
+    """Add a new audio group"""
+    bl_idname = "collision.add_audio_group"
+    bl_label = "Add Audio Group"
     bl_options = {'REGISTER', 'UNDO'}
-
-    @classmethod
-    def poll(cls, context):
-        return len(_selected_collision_spheres(context)) > 0
 
     def execute(self, context):
         settings = context.scene.collision_sound_import
-        if _validate_sound_settings(settings, self.report) is None:
-            return {'CANCELLED'}
+        groups = settings.audio_groups
 
-        selected = _selected_collision_spheres(context)
-        for obj in selected:
-            _store_sound_assignment(obj, settings)
+        # Cycle through colors in order, wrapping around (Red, Orange, …, Gray, Red(2), Orange(2), …).
+        color_order = [item[0] for item in AUDIO_GROUP_COLOR_ITEMS]
+        next_color = color_order[len(groups) % len(color_order)]
 
-        self.report({'INFO'}, f"Assigned sound to {len(selected)} point(s)")
+        color_label = next(item[1] for item in AUDIO_GROUP_COLOR_ITEMS if item[0] == next_color)
+
+        # Generate a unique display name.
+        existing_names = {g.name for g in groups}
+        name = color_label
+        if name in existing_names:
+            i = 2
+            while f"{color_label} ({i})" in existing_names:
+                i += 1
+            name = f"{color_label} ({i})"
+
+        group = groups.add()
+        group.group_id = settings.next_group_id
+        group.color = next_color
+        group.name = name
+        settings.next_group_id += 1
+        settings.active_audio_group_index = len(groups) - 1
+
         return {'FINISHED'}
 
 
-class COLLISION_OT_assign_and_add_sound(bpy.types.Operator):
-    """Assign the current sound folder and immediately add VSE strips for the selection"""
-    bl_idname = "collision.assign_and_add_sound"
-    bl_label = "Assign & Add"
+class COLLISION_OT_remove_audio_group(bpy.types.Operator):
+    """Remove the active audio group"""
+    bl_idname = "collision.remove_audio_group"
+    bl_label = "Remove Audio Group"
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
     def poll(cls, context):
-        return len(_selected_collision_spheres(context)) > 0
+        return len(context.scene.collision_sound_import.audio_groups) > 0
 
     def execute(self, context):
         settings = context.scene.collision_sound_import
-        if _validate_sound_settings(settings, self.report) is None:
+        groups = settings.audio_groups
+        idx = settings.active_audio_group_index
+
+        if not (0 <= idx < len(groups)):
             return {'CANCELLED'}
 
+        removed_id = groups[idx].group_id
+        groups.remove(idx)
+        settings.active_audio_group_index = max(0, min(idx, len(groups) - 1))
+
+        # Clear the group assignment and reset the viewport color on affected spheres.
+        from .visualize_collisions import VIS_COLLECTION_NAME
+        if VIS_COLLECTION_NAME in bpy.data.collections:
+            col = bpy.data.collections[VIS_COLLECTION_NAME]
+            for obj in col.objects:
+                if obj.get("audio_group_id") == removed_id:
+                    del obj["audio_group_id"]
+                    obj.color = (1.0, 1.0, 1.0, 1.0)
+
+        return {'FINISHED'}
+
+
+# ---- Per-group folder selection operators ------------------------------------------------
+
+class COLLISION_OT_select_group_sound_folder(bpy.types.Operator):
+    """Open a file browser to select a sound folder for the active audio group"""
+    bl_idname = "collision.select_group_sound_folder"
+    bl_label = "Select Sound Folder"
+    bl_options = {'REGISTER'}
+
+    directory: bpy.props.StringProperty(subtype='DIR_PATH')
+
+    def execute(self, context):
+        settings = context.scene.collision_sound_import
+        idx = settings.active_audio_group_index
+        if 0 <= idx < len(settings.audio_groups):
+            settings.audio_groups[idx].sound_folder = self.directory
+        return {'FINISHED'}
+
+    def invoke(self, context, event):
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
+
+
+class COLLISION_OT_use_default_group_sounds(bpy.types.Operator):
+    """Use the bundled default sound files for the active audio group"""
+    bl_idname = "collision.use_default_group_sounds"
+    bl_label = "Use Default Sounds"
+    bl_options = {'REGISTER'}
+
+    def execute(self, context):
+        from pathlib import Path
+        sounds_folder = str(Path(__file__).resolve().parent / "sounds")
+        if not os.path.isdir(sounds_folder):
+            self.report({'ERROR'}, "Default sounds folder not found — add .wav files to the addon's sounds/ folder")
+            return {'CANCELLED'}
+
+        settings = context.scene.collision_sound_import
+        idx = settings.active_audio_group_index
+        if not (0 <= idx < len(settings.audio_groups)):
+            self.report({'ERROR'}, "No active audio group")
+            return {'CANCELLED'}
+
+        settings.audio_groups[idx].sound_folder = sounds_folder
+        count = len(get_sound_files_from_folder(sounds_folder))
+        self.report({'INFO'}, f"Using default sounds ({count} file(s))")
+        return {'FINISHED'}
+
+
+# ---- Selection-based assignment operator ------------------------------------------------
+
+class COLLISION_OT_assign_sound(bpy.types.Operator):
+    """Assign the active audio group to the selected collision points"""
+    bl_idname = "collision.assign_sound"
+    bl_label = "Assign to Group"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        if not _selected_collision_spheres(context):
+            return False
+        settings = context.scene.collision_sound_import
+        idx = settings.active_audio_group_index
+        return 0 <= idx < len(settings.audio_groups)
+
+    def execute(self, context):
+        settings = context.scene.collision_sound_import
+        idx = settings.active_audio_group_index
+        if not (0 <= idx < len(settings.audio_groups)):
+            self.report({'ERROR'}, "No active audio group")
+            return {'CANCELLED'}
+
+        group = settings.audio_groups[idx]
+        color = GROUP_COLORS.get(group.color, (1.0, 1.0, 1.0, 1.0))
         selected = _selected_collision_spheres(context)
         for obj in selected:
-            _store_sound_assignment(obj, settings)
+            _store_group_assignment(obj, group.group_id)
+            obj.color = color
 
-        count = _add_strips_for_spheres(context, selected, self.report)
-        if count == 0:
-            return {'CANCELLED'}
-        self.report({'INFO'}, f"Assigned & added {count} sound strip(s)")
+        self.report({'INFO'}, f"Assigned {len(selected)} point(s) to group \"{group.name}\"")
         return {'FINISHED'}
 
 
 class COLLISION_OT_readd_assigned_sounds(bpy.types.Operator):
-    """Create VSE strips for all collision points that have a sound assigned"""
+    """Create VSE strips for all collision points that have a sound group assigned"""
     bl_idname = "collision.readd_assigned_sounds"
     bl_label = "Add All Assigned"
     bl_options = {'REGISTER', 'UNDO'}
@@ -428,27 +547,7 @@ class COLLISION_OT_readd_assigned_sounds(bpy.types.Operator):
         count = _add_strips_for_spheres(context, spheres, self.report)
         if count == 0:
             return {'CANCELLED'}
-        self.report({'INFO'}, f"Re-added {count} sound strip(s)")
-        return {'FINISHED'}
-
-
-class COLLISION_OT_clear_assignments(bpy.types.Operator):
-    """Remove sound assignments from all collision points"""
-    bl_idname = "collision.clear_assignments"
-    bl_label = "Clear Assignments"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    @classmethod
-    def poll(cls, context):
-        return len(_all_assigned_spheres()) > 0
-
-    def execute(self, context):
-        spheres = _all_assigned_spheres()
-        for obj in spheres:
-            for key in ("sound_folder", "sound_selection_mode", "sound_file"):
-                if key in obj:
-                    del obj[key]
-        self.report({'INFO'}, f"Cleared assignments from {len(spheres)} point(s)")
+        self.report({'INFO'}, f"Added {count} sound strip(s)")
         return {'FINISHED'}
 
 
