@@ -92,6 +92,10 @@ class COLLISION_OT_detect_modal(bpy.types.Operator):
             item.relative_velocity = e["relative_velocity"]
             item.speed = e["speed"]
 
+        # Create collision visualization spheres (same as former "Visualize Collisions" button).
+        if events:
+            bpy.ops.collision.visualize_collisions()
+
         # Optionally export to JSON.
         if settings.export_json:
             filepath = bpy.path.abspath(settings.output_path)

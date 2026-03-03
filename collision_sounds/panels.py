@@ -64,5 +64,4 @@ class VIEW3D_PT_debug(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        layout.operator("collision.visualize_collisions", icon='SPHERE')
         layout.operator("collision.clear_visualization", icon='TRASH')
