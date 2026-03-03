@@ -4,6 +4,18 @@ import bpy
 
 SUPPORTED_AUDIO_EXTENSIONS = {'.wav', '.mp3', '.ogg', '.flac', '.aiff', '.aif'}
 
+AUDIO_GROUP_COLOR_ITEMS = [
+    ('COLOR_01', "Red",    "Red",    'STRIP_COLOR_01', 0),
+    ('COLOR_02', "Orange", "Orange", 'STRIP_COLOR_02', 1),
+    ('COLOR_03', "Yellow", "Yellow", 'STRIP_COLOR_03', 2),
+    ('COLOR_04', "Green",  "Green",  'STRIP_COLOR_04', 3),
+    ('COLOR_05', "Blue",   "Blue",   'STRIP_COLOR_05', 4),
+    ('COLOR_06', "Purple", "Purple", 'STRIP_COLOR_06', 5),
+    ('COLOR_07', "Pink",   "Pink",   'STRIP_COLOR_07', 6),
+    ('COLOR_08', "Brown",  "Brown",  'STRIP_COLOR_08', 7),
+    ('COLOR_09', "Gray",   "Gray",   'STRIP_COLOR_09', 8),
+]
+
 
 def get_sound_files_from_folder(folder_path):
     """Get all supported audio files from a folder."""
@@ -18,7 +30,7 @@ def get_sound_files_from_folder(folder_path):
 
 
 def get_sound_files_enum(self, context):
-    """Return a list of sound files for the enum property."""
+    """Return a list of sound files for the enum property (global/legacy settings)."""
     settings = context.scene.collision_sound_import
     folder_path = bpy.path.abspath(settings.sound_folder)
     items = []
@@ -31,7 +43,60 @@ def get_sound_files_enum(self, context):
     return items
 
 
+def get_group_sound_files_enum(self, context):
+    """Return a list of sound files for a per-group enum property."""
+    folder_path = bpy.path.abspath(self.sound_folder) if self.sound_folder else ""
+    items = []
+    sound_files = get_sound_files_from_folder(folder_path)
+    if not sound_files:
+        items.append(('NONE', "No sounds found", "Select a folder with audio files", 'ERROR', 0))
+    else:
+        for i, filename in enumerate(sound_files):
+            items.append((filename, filename, f"Sound file: {filename}", 'SOUND', i))
+    return items
+
+
+class AudioGroup(bpy.types.PropertyGroup):
+    group_id: bpy.props.IntProperty(
+        name="Group ID",
+        description="Unique identifier for this group",
+        default=-1,
+    )
+    color: bpy.props.EnumProperty(
+        name="Color",
+        description="Color tag for this audio group",
+        items=AUDIO_GROUP_COLOR_ITEMS,
+        default='COLOR_01',
+    )
+    name: bpy.props.StringProperty(
+        name="Name",
+        description="Display name for this audio group",
+        default="Group",
+    )
+    sound_folder: bpy.props.StringProperty(
+        name="Sound Folder",
+        description="Path to folder containing sound files for this group",
+        subtype='DIR_PATH',
+        default="",
+    )
+    sound_selection_mode: bpy.props.EnumProperty(
+        name="Sound Selection Mode",
+        description="How to select sounds for collision events in this group",
+        items=[
+            ('RANDOM', "Random Sound", "Randomly select a sound file from the folder for each event", 'FILE_REFRESH', 0),
+            ('SINGLE', "Single Sound", "Use one selected sound file for every event", 'SOUND', 1),
+        ],
+        default='RANDOM',
+    )
+    sound_file: bpy.props.EnumProperty(
+        name="Sound File",
+        description="Select a sound file from the folder",
+        items=get_group_sound_files_enum,
+    )
+
+
 class SoundImportSettings(bpy.types.PropertyGroup):
+    # Legacy / global sound settings kept for the COLLISION_OT_add_sounds operator.
     sound_folder: bpy.props.StringProperty(
         name="Sound Folder",
         description="Path to folder containing sound files",
@@ -94,6 +159,19 @@ class SoundImportSettings(bpy.types.PropertyGroup):
         name="Amount",
         description="Random variation amount (0 = none, 1 = can reduce to 0)",
         default=0.2, min=0.0, max=1.0, subtype='FACTOR',
+    )
+
+    # Audio groups.
+    audio_groups: bpy.props.CollectionProperty(type=AudioGroup)
+    active_audio_group_index: bpy.props.IntProperty(
+        name="Active Audio Group",
+        default=0,
+    )
+    next_group_id: bpy.props.IntProperty(
+        name="Next Group ID",
+        description="Internal counter used to generate unique group IDs",
+        default=0,
+        options={'HIDDEN'},
     )
 
 

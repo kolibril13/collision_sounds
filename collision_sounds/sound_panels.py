@@ -2,8 +2,28 @@ import os
 
 import bpy
 
-from .sound_properties import get_sound_files_from_folder
+from .sound_properties import get_sound_files_from_folder, AUDIO_GROUP_COLOR_ITEMS
 
+
+# ---------------------------------------------------------------------------
+# UIList
+# ---------------------------------------------------------------------------
+
+class VIEW3D_UL_audio_groups(bpy.types.UIList):
+    bl_idname = "VIEW3D_UL_audio_groups"
+
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+        if self.layout_type in {'DEFAULT', 'COMPACT'}:
+            row = layout.row(align=True)
+            row.label(text=item.name, icon=f"STRIP_{item.color}")
+        elif self.layout_type == 'GRID':
+            layout.alignment = 'CENTER'
+            layout.label(text="", icon=f"STRIP_{item.color}")
+
+
+# ---------------------------------------------------------------------------
+# Add Sounds panel (contains Audio Groups inline)
+# ---------------------------------------------------------------------------
 
 class VIEW3D_PT_add_sounds(bpy.types.Panel):
     bl_label = "Add Sounds"
@@ -17,38 +37,55 @@ class VIEW3D_PT_add_sounds(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         settings = context.scene.collision_sound_import
-        events = context.scene.collision_sounds.events
 
-        # Sound folder selection.
-        col = layout.column(align=True)
-        col.label(text="Sound Folder:", icon='FILE_FOLDER')
-        row = col.row(align=True)
-        if settings.sound_folder:
-            folder_name = os.path.basename(os.path.normpath(settings.sound_folder))
-            row.label(text=folder_name, icon='CHECKMARK')
-        else:
-            row.label(text="Not selected", icon='ERROR')
-        row = col.row(align=True)
-        row.operator("collision.use_default_sounds", text="Use Default", icon='PACKAGE')
-        row.operator("collision.select_sound_folder", text="Select Folder...", icon='FILEBROWSER')
+        # ---- Audio Groups ------------------------------------------------
+        row = layout.row()
+        row.template_list(
+            "VIEW3D_UL_audio_groups", "",
+            settings, "audio_groups",
+            settings, "active_audio_group_index",
+            rows=3,
+        )
+        col = row.column(align=True)
+        col.operator("collision.add_audio_group", icon='ADD', text="")
+        col.operator("collision.remove_audio_group", icon='REMOVE', text="")
 
-        if settings.sound_folder:
+        # Active group sound settings.
+        groups = settings.audio_groups
+        idx = settings.active_audio_group_index
+        active_group = groups[idx] if groups and (0 <= idx < len(groups)) else None
+
+        if active_group:
             layout.separator()
             col = layout.column(align=True)
-            col.label(text="Sound Selection:", icon='SOUND')
-            row = col.row(align=True)
-            row.prop(settings, "sound_selection_mode", expand=True)
-
-            if settings.sound_selection_mode == 'SINGLE':
-                col.separator()
-                col.prop(settings, "sound_file", text="")
+            col.label(text="Sound Folder:", icon='FILE_FOLDER')
+            row2 = col.row(align=True)
+            if active_group.sound_folder:
+                folder_name = os.path.basename(os.path.normpath(active_group.sound_folder))
+                row2.label(text=folder_name, icon='CHECKMARK')
             else:
-                col.separator()
-                folder_path = bpy.path.abspath(settings.sound_folder)
-                count = len(get_sound_files_from_folder(folder_path))
-                col.label(text=f"Will use {count} sound(s) randomly", icon='INFO')
+                row2.label(text="Not selected", icon='ERROR')
+            row2 = col.row(align=True)
+            row2.operator("collision.use_default_group_sounds", text="Use Default", icon='PACKAGE')
+            row2.operator("collision.select_group_sound_folder", text="Select Folder...", icon='FILEBROWSER')
 
-        # Selection-based sound assignment.
+            if active_group.sound_folder:
+                layout.separator()
+                col2 = layout.column(align=True)
+                col2.label(text="Sound Selection:", icon='SOUND')
+                row3 = col2.row(align=True)
+                row3.prop(active_group, "sound_selection_mode", expand=True)
+
+                if active_group.sound_selection_mode == 'SINGLE':
+                    col2.separator()
+                    col2.prop(active_group, "sound_file", text="")
+                else:
+                    col2.separator()
+                    folder_path = bpy.path.abspath(active_group.sound_folder)
+                    count = len(get_sound_files_from_folder(folder_path))
+                    col2.label(text=f"Will use {count} sound(s) randomly", icon='INFO')
+
+        # ---- Assignment --------------------------------------------------
         layout.separator()
         selected_points = [
             obj for obj in context.selected_objects
@@ -64,12 +101,10 @@ class VIEW3D_PT_add_sounds(bpy.types.Panel):
 
         row = layout.row(align=True)
         row.scale_y = 1.3
-        row.enabled = num_selected > 0
+        row.enabled = num_selected > 0 and active_group is not None
         row.operator("collision.assign_sound", text="Assign", icon='PINNED')
-        row.operator("collision.assign_and_add_sound", text="Assign & Add",
-                     icon='PLAY_SOUND')
 
-        # Add all previously assigned sounds.
+        # ---- Add assigned ------------------------------------------------
         from .sound_operators import _all_assigned_spheres
         num_assigned = len(_all_assigned_spheres())
         layout.separator()
@@ -81,11 +116,7 @@ class VIEW3D_PT_add_sounds(bpy.types.Panel):
         row.operator("collision.readd_assigned_sounds", icon='PLAY_SOUND')
 
         layout.separator()
-        row = layout.row(align=True)
-        row.operator("collision.clear_assignments", text="Clear Assignments",
-                     icon='X')
-        row.operator("collision.clear_sounds", text="Clear Sounds",
-                     icon='TRASH')
+        layout.operator("collision.clear_sounds", text="Clear Sounds", icon='TRASH')
 
 
 class VIEW3D_PT_speed_volume(bpy.types.Panel):
@@ -150,5 +181,3 @@ class VIEW3D_PT_randomize_volume(bpy.types.Panel):
         layout.active = settings.use_volume_randomness
         col = layout.column(align=True)
         col.prop(settings, "volume_randomness", text="Amount", slider=True)
-
-
