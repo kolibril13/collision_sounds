@@ -56,6 +56,26 @@ class VIEW3D_PT_add_sounds(bpy.types.Panel):
         active_group = groups[idx] if groups and (0 <= idx < len(groups)) else None
 
         if active_group:
+            # Assign section sits directly under the group list.
+            layout.separator()
+            selected_points = [
+                obj for obj in context.selected_objects
+                if "collision_frame" in obj
+            ]
+            num_selected = len(selected_points)
+            if num_selected > 0:
+                layout.label(text=f"{num_selected} collision point(s) selected",
+                             icon='RESTRICT_SELECT_OFF')
+            else:
+                layout.label(text="Select collision points in viewport",
+                             icon='RESTRICT_SELECT_ON')
+
+            row = layout.row(align=True)
+            row.scale_y = 1.3
+            row.enabled = num_selected > 0
+            row.operator("collision.assign_sound", text="Assign", icon='PINNED')
+
+            # Sound folder and selection below the assign button.
             layout.separator()
             col = layout.column(align=True)
             col.label(text="Sound Folder:", icon='FILE_FOLDER')
@@ -84,25 +104,6 @@ class VIEW3D_PT_add_sounds(bpy.types.Panel):
                     folder_path = bpy.path.abspath(active_group.sound_folder)
                     count = len(get_sound_files_from_folder(folder_path))
                     col2.label(text=f"Will use {count} sound(s) randomly", icon='INFO')
-
-        # ---- Assignment --------------------------------------------------
-        layout.separator()
-        selected_points = [
-            obj for obj in context.selected_objects
-            if "collision_frame" in obj
-        ]
-        num_selected = len(selected_points)
-        if num_selected > 0:
-            layout.label(text=f"{num_selected} collision point(s) selected",
-                         icon='RESTRICT_SELECT_OFF')
-        else:
-            layout.label(text="Select collision points in viewport",
-                         icon='RESTRICT_SELECT_ON')
-
-        row = layout.row(align=True)
-        row.scale_y = 1.3
-        row.enabled = num_selected > 0 and active_group is not None
-        row.operator("collision.assign_sound", text="Assign", icon='PINNED')
 
         # ---- Add assigned ------------------------------------------------
         from .sound_operators import _all_assigned_spheres
