@@ -8,6 +8,19 @@ from mathutils import Vector
 
 from .sound_properties import get_sound_files_from_folder, AUDIO_GROUP_COLOR_ITEMS
 
+# RGB values matching Blender's STRIP_COLOR_01–09 (linear color space).
+GROUP_COLORS = {
+    'COLOR_01': (0.90, 0.26, 0.26, 1.0),  # Red
+    'COLOR_02': (0.87, 0.56, 0.16, 1.0),  # Orange
+    'COLOR_03': (0.80, 0.74, 0.11, 1.0),  # Yellow
+    'COLOR_04': (0.36, 0.75, 0.32, 1.0),  # Green
+    'COLOR_05': (0.22, 0.54, 0.87, 1.0),  # Blue
+    'COLOR_06': (0.54, 0.32, 0.87, 1.0),  # Purple
+    'COLOR_07': (0.87, 0.43, 0.67, 1.0),  # Pink
+    'COLOR_08': (0.62, 0.42, 0.24, 1.0),  # Brown
+    'COLOR_09': (0.50, 0.50, 0.50, 1.0),  # Gray
+}
+
 
 # ---------------------------------------------------------------------------
 # VSE helpers (compatible with Blender 4.x and 5.0+)
@@ -426,13 +439,14 @@ class COLLISION_OT_remove_audio_group(bpy.types.Operator):
         groups.remove(idx)
         settings.active_audio_group_index = max(0, min(idx, len(groups) - 1))
 
-        # Clear the group assignment from all spheres that referenced this group.
+        # Clear the group assignment and reset the viewport color on affected spheres.
         from .visualize_collisions import VIS_COLLECTION_NAME
         if VIS_COLLECTION_NAME in bpy.data.collections:
             col = bpy.data.collections[VIS_COLLECTION_NAME]
             for obj in col.objects:
                 if obj.get("audio_group_id") == removed_id:
                     del obj["audio_group_id"]
+                    obj.color = (1.0, 1.0, 1.0, 1.0)
 
         return {'FINISHED'}
 
@@ -508,9 +522,11 @@ class COLLISION_OT_assign_sound(bpy.types.Operator):
             return {'CANCELLED'}
 
         group = settings.audio_groups[idx]
+        color = GROUP_COLORS.get(group.color, (1.0, 1.0, 1.0, 1.0))
         selected = _selected_collision_spheres(context)
         for obj in selected:
             _store_group_assignment(obj, group.group_id)
+            obj.color = color
 
         self.report({'INFO'}, f"Assigned {len(selected)} point(s) to group \"{group.name}\"")
         return {'FINISHED'}
