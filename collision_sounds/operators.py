@@ -224,6 +224,7 @@ class VIEW3D_PT_detect_collisions(bpy.types.Panel):
 
         layout.separator()
         layout.operator("collision.detect", icon='PLAY')
+        layout.operator("collision.clear_visualization", icon='TRASH')
 
         if len(settings.events) > 0:
             layout.separator()
@@ -253,18 +254,3 @@ class VIEW3D_PT_export_json(bpy.types.Panel):
         row.operator("collision.export_json", icon='EXPORT')
         if len(settings.events) == 0:
             layout.label(text="Run detection first", icon='INFO')
-
-
-class VIEW3D_PT_debug(bpy.types.Panel):
-    bl_label = "Visualize Collisions"
-    bl_idname = "VIEW3D_PT_debug"
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category = "Collision Sounds"
-    bl_parent_id = "VIEW3D_PT_collision_sounds"
-    bl_options = {'DEFAULT_CLOSED'}
-    bl_order = 2
-
-    def draw(self, context):
-        layout = self.layout
-        layout.operator("collision.clear_visualization", icon='TRASH')
