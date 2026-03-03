@@ -3,13 +3,13 @@
 Color and size are mapped from collision speed: blue = slow (small spheres),
 red = fast (large spheres).  A shared material reads each object's
 ``collision_speed`` custom property (Attribute node + Color Ramp).  All generated
-objects are in the "Collision Visualization" collection.
+objects are in the "Audio Markers" collection.
 """
 
 import bpy
 import mathutils
 
-VIS_COLLECTION_NAME = "Collision Visualization"
+VIS_COLLECTION_NAME = "Audio Markers"
 SPEED_MATERIAL_NAME = "collision_vis_speed"
 SPHERE_RADIUS_SLOW = 0.16   # radius for slow collisions (blue)
 SPHERE_RADIUS_FAST = 0.50   # radius for fast collisions (red)
@@ -17,7 +17,7 @@ SPHERE_RADIUS_FAST = 0.50   # radius for fast collisions (red)
 
 class COLLISION_OT_visualize_collisions(bpy.types.Operator):
     bl_idname = "collision.visualize_collisions"
-    bl_label = "Visualize Collisions"
+    bl_label = "Audio Markers"
     bl_description = "Place colored spheres at each detected collision point"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -73,7 +73,7 @@ class COLLISION_OT_visualize_collisions(bpy.types.Operator):
 
 class COLLISION_OT_clear_visualization(bpy.types.Operator):
     bl_idname = "collision.clear_visualization"
-    bl_label = "Clear Visualization"
+    bl_label = "Clear Audio Markers"
     bl_description = "Remove all collision visualization spheres"
     bl_options = {'REGISTER', 'UNDO'}
 
