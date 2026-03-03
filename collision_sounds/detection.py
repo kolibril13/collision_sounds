@@ -9,7 +9,7 @@ COLLISION_EPSILON = 0.01
 DEFAULT_MARGIN = 0.04
 
 
-def detect_collisions(context):
+class DetectionIntermediate:
     """Scan the full animation timeline and return collision onset events.
 
     Checks every (target, collider) pair each frame.  A collision onset is
@@ -29,102 +29,136 @@ def detect_collisions(context):
     Returns a list of event dicts with frame, target/collider names,
     contact position, and velocities.
     """
-    scene = context.scene
-    settings = scene.collision_sounds
-    depsgraph = context.evaluated_depsgraph_get()
-    fps = scene.render.fps / scene.render.fps_base
-    precision = settings.precision_mode
-    substeps = settings.substeps if precision else 1
 
-    targets = [obj for obj in settings.targets_collection.objects if obj.type == 'MESH']
-    colliders = [obj for obj in settings.colliders_collection.objects if obj.type == 'MESH']
-    pairs = list(product(targets, colliders))
+    def __init__(self, context):
+        self.original_frame = context.scene.frame_current
 
-    was_in_contact = {(t.name, c.name): False for t, c in pairs}
-    prev_positions = {}
-    collision_events = []
-    all_objects = {}
-    for obj in targets:
-        all_objects[obj.name] = obj
-    for obj in colliders:
-        all_objects[obj.name] = obj
+        self.scene = context.scene
+        self.settings = self.scene.collision_sounds
+        self.depsgraph = context.evaluated_depsgraph_get()
+        self.fps = self.scene.render.fps / self.scene.render.fps_base
+        self.precision = self.settings.precision_mode
+        self.substeps = self.settings.substeps if self.precision else 1
 
-    pair_thresholds = {}
-    for target, collider in pairs:
-        pair_thresholds[(target.name, collider.name)] = _collision_threshold(target, collider)
+        self.targets = [
+            obj
+            for obj in self.settings.targets_collection.objects
+            if obj.type == "MESH"
+        ]
+        self.colliders = [
+            obj
+            for obj in self.settings.colliders_collection.objects
+            if obj.type == "MESH"
+        ]
+        self.pairs = list(product(self.targets, self.colliders))
 
-    # ------------------------------------------------------------------
-    # Pass 1: sequential frame scan – no frame jumping so the rigid-body
-    # simulation cache is never invalidated.
-    # ------------------------------------------------------------------
-    for frame in range(scene.frame_start, scene.frame_end + 1):
-        scene.frame_set(frame)
-        depsgraph.update()
+        self.was_in_contact = {(t.name, c.name): False for t, c in self.pairs}
+        self.prev_positions = {}
+        self.collision_events = []
+        self.all_objects = {}
+        for obj in self.targets:
+            self.all_objects[obj.name] = obj
+        for obj in self.colliders:
+            self.all_objects[obj.name] = obj
 
-        cur_positions = {}
-        cur_velocities = {}
-        for name, obj in all_objects.items():
-            pos = obj.evaluated_get(depsgraph).matrix_world.translation.copy()
-            cur_positions[name] = pos
-            if name in prev_positions:
-                cur_velocities[name] = (pos - prev_positions[name]) * fps
-            else:
-                cur_velocities[name] = Vector((0.0, 0.0, 0.0))
-
-        bvh_cache = {}
-        for name, obj in all_objects.items():
-            bvh = _bvh_from_object(obj, depsgraph)
-            if bvh is not None:
-                bvh_cache[name] = bvh
-
-        for target, collider in pairs:
-            bvh_t = bvh_cache.get(target.name)
-            bvh_c = bvh_cache.get(collider.name)
-            if bvh_t is None or bvh_c is None:
-                continue
-
-            threshold = pair_thresholds[(target.name, collider.name)]
-            is_in_contact = _surfaces_within_distance(
-                bvh_t, bvh_c,
-                cur_positions[target.name], cur_positions[collider.name],
-                threshold,
+        self.pair_thresholds = {}
+        for target, collider in self.pairs:
+            self.pair_thresholds[(target.name, collider.name)] = _collision_threshold(
+                target, collider
             )
-            key = (target.name, collider.name)
 
-            if is_in_contact and not was_in_contact[key]:
-                pos_t = cur_positions[target.name]
-                contact = _contact_position(bvh_c, pos_t) if bvh_c else pos_t
-                vel_t = cur_velocities.get(target.name, Vector())
-                vel_c = cur_velocities.get(collider.name, Vector())
-                rel_vel = vel_t - vel_c
+        self.next_frame = self.scene.frame_start
 
-                collision_events.append({
-                    "frame": float(frame),
-                    "time": round(frame / fps, 6),
-                    "target": target.name,
-                    "collider": collider.name,
-                    "position": _round_vec(contact),
-                    "velocity": _round_vec(vel_t),
-                    "relative_velocity": _round_vec(rel_vel),
-                    "speed": round(rel_vel.length, 4),
-                })
+    def run_to_completion(self):
+        while True:
+            result = self.step()
+            if result is not None:
+                return result
 
-            was_in_contact[key] = is_in_contact
+    def step(self) -> None | list:
+        # ------------------------------------------------------------------
+        # Pass 1: sequential frame scan – no frame jumping so the rigid-body
+        # simulation cache is never invalidated.
+        # ------------------------------------------------------------------
+        if self.next_frame != self.scene.frame_end + 1:
+            self.scene.frame_set(self.next_frame)
+            self.depsgraph.update()
 
-        prev_positions = cur_positions
+            cur_positions = {}
+            cur_velocities = {}
+            for name, obj in self.all_objects.items():
+                pos = obj.evaluated_get(self.depsgraph).matrix_world.translation.copy()
+                cur_positions[name] = pos
+                if name in self.prev_positions:
+                    cur_velocities[name] = (pos - self.prev_positions[name]) * self.fps
+                else:
+                    cur_velocities[name] = Vector((0.0, 0.0, 0.0))
 
-    # ------------------------------------------------------------------
-    # Pass 2 (precision mode only): refine each onset to a sub-frame time
-    # and recompute velocities at that precise moment.
-    # ------------------------------------------------------------------
-    if precision and collision_events:
-        collision_events = _refine_events(
-            scene, depsgraph, collision_events, all_objects,
-            pair_thresholds, substeps, fps,
-        )
+            bvh_cache = {}
+            for name, obj in self.all_objects.items():
+                bvh = _bvh_from_object(obj, self.depsgraph)
+                if bvh is not None:
+                    bvh_cache[name] = bvh
 
-    return collision_events
+            for target, collider in self.pairs:
+                bvh_t = bvh_cache.get(target.name)
+                bvh_c = bvh_cache.get(collider.name)
+                if bvh_t is None or bvh_c is None:
+                    continue
 
+                threshold = self.pair_thresholds[(target.name, collider.name)]
+                is_in_contact = _surfaces_within_distance(
+                    bvh_t,
+                    bvh_c,
+                    cur_positions[target.name],
+                    cur_positions[collider.name],
+                    threshold,
+                )
+                key = (target.name, collider.name)
+
+                if is_in_contact and not self.was_in_contact[key]:
+                    pos_t = cur_positions[target.name]
+                    contact = _contact_position(bvh_c, pos_t) if bvh_c else pos_t
+                    vel_t = cur_velocities.get(target.name, Vector())
+                    vel_c = cur_velocities.get(collider.name, Vector())
+                    rel_vel = vel_t - vel_c
+
+                    self.collision_events.append(
+                        {
+                            "frame": float(self.next_frame),
+                            "time": round(self.next_frame / self.fps, 6),
+                            "target": target.name,
+                            "collider": collider.name,
+                            "position": _round_vec(contact),
+                            "velocity": _round_vec(vel_t),
+                            "relative_velocity": _round_vec(rel_vel),
+                            "speed": round(rel_vel.length, 4),
+                        }
+                    )
+
+                self.was_in_contact[key] = is_in_contact
+
+            self.prev_positions = cur_positions
+
+            self.next_frame += 1
+            return None
+
+        # ------------------------------------------------------------------
+        # Pass 2 (precision mode only): refine each onset to a sub-frame time
+        # and recompute velocities at that precise moment.
+        # ------------------------------------------------------------------
+        if self.precision and self.collision_events:
+            self.collision_events = _refine_events(
+                self.scene,
+                self.depsgraph,
+                self.collision_events,
+                self.all_objects,
+                self.pair_thresholds,
+                self.substeps,
+                self.fps,
+            )
+
+        return self.collision_events
 
 def _refine_events(scene, depsgraph, events, all_objects,
                    pair_thresholds, substeps, fps):
