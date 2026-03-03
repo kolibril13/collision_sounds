@@ -69,7 +69,7 @@ class VIEW3D_PT_add_sounds(bpy.types.Panel):
         row.operator("collision.assign_and_add_sound", text="Assign & Add",
                      icon='PLAY_SOUND')
 
-        # Re-add all previously assigned sounds.
+        # Add all previously assigned sounds.
         from .sound_operators import _all_assigned_spheres
         num_assigned = len(_all_assigned_spheres())
         layout.separator()
@@ -78,7 +78,7 @@ class VIEW3D_PT_add_sounds(bpy.types.Panel):
                          icon='CHECKMARK')
         row = layout.row(align=True)
         row.enabled = num_assigned > 0
-        row.operator("collision.readd_assigned_sounds", icon='FILE_REFRESH')
+        row.operator("collision.readd_assigned_sounds", icon='PLAY_SOUND')
 
         layout.separator()
         row = layout.row(align=True)

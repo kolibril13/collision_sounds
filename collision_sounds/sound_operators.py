@@ -414,9 +414,9 @@ class COLLISION_OT_assign_and_add_sound(bpy.types.Operator):
 
 
 class COLLISION_OT_readd_assigned_sounds(bpy.types.Operator):
-    """Re-create VSE strips for all collision points that have a sound assigned"""
+    """Create VSE strips for all collision points that have a sound assigned"""
     bl_idname = "collision.readd_assigned_sounds"
-    bl_label = "Re-add All Assigned"
+    bl_label = "Add All Assigned"
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
