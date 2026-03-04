@@ -72,7 +72,7 @@ class AudioGroup(bpy.types.PropertyGroup):
             ('SINGLE', "Single Sound", "Use one selected sound file for every event", 'SOUND', 0),
             ('RANDOM', "Random Sound", "Randomly select a sound file from the folder for each event", 'FILE_REFRESH', 1),
         ],
-        default='RANDOM',
+        default='SINGLE',
     )
     sound_file: bpy.props.EnumProperty(
         name="Sound File",

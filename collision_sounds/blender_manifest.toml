@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "collision_sounds"
-version = "1.4.0"
+version = "1.5.0"
 name = "Collision Sounds"
 tagline = "Detect collisions and add sound strips to the sequencer"
 maintainer = "Jan-Hendrik Müller"
