@@ -67,7 +67,7 @@ class VIEW3D_PT_add_sounds(bpy.types.Panel):
                 layout.label(text=f"{num_selected} collision point(s) selected",
                              icon='RESTRICT_SELECT_OFF')
             else:
-                layout.label(text="Select collision points in viewport",
+                layout.label(text="Select Audio Markers in viewport",
                              icon='RESTRICT_SELECT_ON')
 
             row = layout.row(align=True)

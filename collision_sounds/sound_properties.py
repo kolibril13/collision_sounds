@@ -69,8 +69,8 @@ class AudioGroup(bpy.types.PropertyGroup):
         name="Sound Selection Mode",
         description="How to select sounds for collision events in this group",
         items=[
-            ('RANDOM', "Random Sound", "Randomly select a sound file from the folder for each event", 'FILE_REFRESH', 0),
-            ('SINGLE', "Single Sound", "Use one selected sound file for every event", 'SOUND', 1),
+            ('SINGLE', "Single Sound", "Use one selected sound file for every event", 'SOUND', 0),
+            ('RANDOM', "Random Sound", "Randomly select a sound file from the folder for each event", 'FILE_REFRESH', 1),
         ],
         default='RANDOM',
     )
