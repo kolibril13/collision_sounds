@@ -213,9 +213,9 @@ class VIEW3D_PT_export(bpy.types.Panel):
         layout.prop(settings, "export_json", text="Export when detecting")
         layout.separator()
         row = layout.row()
-        row.enabled = len(settings.events) > 0
+        row.enabled = bool(settings.events)
         row.operator("collision.export_json", text="Export JSON", icon='EXPORT')
-        if len(settings.events) == 0:
+        if not settings.events:
             layout.label(text="Run detection first", icon='INFO')
 
         layout.separator()
@@ -256,7 +256,7 @@ class VIEW3D_PT_detect_collisions(bpy.types.Panel):
         layout.operator("collision.detect", icon='PLAY')
         layout.operator("collision.clear_visualization", icon='TRASH')
 
-        if len(settings.events) > 0:
+        if settings.events:
             layout.separator()
             layout.label(text=f"{len(settings.events)} event(s) detected")
 

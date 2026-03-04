@@ -1,11 +1,9 @@
 schema_version = "1.0.0"
 
-# Example of manifest file for a Blender extension
-# Change the values according to your extension
 id = "collision_sounds"
 version = "1.4.0"
 name = "Collision Sounds"
-tagline = "This is another extension"
+tagline = "Detect collisions and add sound strips to the sequencer"
 maintainer = "Jan-Hendrik Müller"
 # Supported types: "add-on", "theme"
 type = "add-on"

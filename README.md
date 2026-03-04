@@ -1,9 +1,9 @@
-# collision_sounds
-Detect collisions
+# Collision Sounds
 
+Blender add-on: detect collisions between objects over the timeline and add sound strips (with optional per-point audio groups and camera-based volume/pan).
 
-# blender_enhanced_speaker
+## Dev: build extension
 
-# for dev:
-
+```bash
 /Applications/Blender.app/Contents/MacOS/blender --background --command extension build --source-dir /Users/jan-hendrik/projects/collision_sounds/collision_sounds --output-dir /Users/jan-hendrik/projects/collision_sounds
+```

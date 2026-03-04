@@ -29,20 +29,6 @@ def get_sound_files_from_folder(folder_path):
     return sorted(sound_files)
 
 
-def get_sound_files_enum(self, context):
-    """Return a list of sound files for the enum property (global/legacy settings)."""
-    settings = context.scene.collision_sound_import
-    folder_path = bpy.path.abspath(settings.sound_folder)
-    items = []
-    sound_files = get_sound_files_from_folder(folder_path)
-    if not sound_files:
-        items.append(('NONE', "No sounds found", "Select a folder with audio files", 'ERROR', 0))
-    else:
-        for i, filename in enumerate(sound_files):
-            items.append((filename, filename, f"Sound file: {filename}", 'SOUND', i))
-    return items
-
-
 def get_group_sound_files_enum(self, context):
     """Return a list of sound files for a per-group enum property."""
     folder_path = bpy.path.abspath(self.sound_folder) if self.sound_folder else ""
@@ -96,28 +82,6 @@ class AudioGroup(bpy.types.PropertyGroup):
 
 
 class SoundImportSettings(bpy.types.PropertyGroup):
-    # Legacy / global sound settings kept for the COLLISION_OT_add_sounds operator.
-    sound_folder: bpy.props.StringProperty(
-        name="Sound Folder",
-        description="Path to folder containing sound files",
-        subtype='DIR_PATH',
-        default="",
-    )
-    sound_selection_mode: bpy.props.EnumProperty(
-        name="Sound Selection Mode",
-        description="How to select sounds for collision events",
-        items=[
-            ('RANDOM', "Random Sound", "Randomly select a sound file from the folder for each event", 'FILE_REFRESH', 0),
-            ('SINGLE', "Single Sound", "Use one selected sound file for every event", 'SOUND', 1),
-        ],
-        default='RANDOM',
-    )
-    sound_file: bpy.props.EnumProperty(
-        name="Sound File",
-        description="Select a sound file from the folder",
-        items=get_sound_files_enum,
-    )
-
     use_speed_volume: bpy.props.BoolProperty(
         name="Collision Speed → Volume",
         description="Map collision speed to strip volume",

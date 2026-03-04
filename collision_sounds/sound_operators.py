@@ -101,123 +101,6 @@ def _random_volume(base, randomness):
 # Operators
 # ---------------------------------------------------------------------------
 
-class COLLISION_OT_add_sounds(bpy.types.Operator):
-    """Add sound strips to the VSE for each detected collision event"""
-    bl_idname = "collision.add_sounds"
-    bl_label = "Add Sounds"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    @classmethod
-    def poll(cls, context):
-        return len(context.scene.collision_sounds.events) > 0
-
-    def execute(self, context):
-        scene = context.scene
-        events = scene.collision_sounds.events
-        settings = scene.collision_sound_import
-
-        sound_folder = bpy.path.abspath(settings.sound_folder)
-        if not sound_folder or not os.path.isdir(sound_folder):
-            self.report({'ERROR'}, "Select a valid sound folder first")
-            return {'CANCELLED'}
-
-        available = get_sound_files_from_folder(sound_folder)
-        if not available:
-            self.report({'ERROR'}, "No audio files found in the selected folder")
-            return {'CANCELLED'}
-
-        if settings.sound_selection_mode == 'SINGLE':
-            if not settings.sound_file or settings.sound_file == 'NONE':
-                self.report({'ERROR'}, "Select a sound file")
-                return {'CANCELLED'}
-            single_path = os.path.join(sound_folder, settings.sound_file)
-            if not os.path.exists(single_path):
-                self.report({'ERROR'}, f"Sound file not found: {single_path}")
-                return {'CANCELLED'}
-
-        # Camera setup (if enabled).
-        camera_obj = None
-        if settings.use_camera_volume_pan:
-            camera_obj = scene.camera
-            if not camera_obj:
-                self.report({'ERROR'}, "No active camera. Set one or disable Camera Distance option.")
-                return {'CANCELLED'}
-
-        # Pre-compute speed range for volume mapping.
-        speeds = [e.speed for e in events]
-        min_speed = min(speeds)
-        max_speed = max(speeds)
-        speed_range = max_speed - min_speed if max_speed > min_speed else 1.0
-
-        # Pre-compute camera distance range and FOV.
-        cam_data_cache = None
-        if camera_obj:
-            cam_data_cache = _precompute_camera_data(
-                context, [Vector(e.position) for e in events], camera_obj,
-            )
-
-        # Ensure VSE exists.
-        seq_scene = _get_sequencer_scene(context)
-        if not seq_scene.sequence_editor:
-            seq_scene.sequence_editor_create()
-        sed = seq_scene.sequence_editor
-        base_channel = _find_next_available_channel(sed)
-
-        # Insert strips.
-        new_strips = []
-        color_map = {}
-        strip_obj_map = {}
-
-        for event in events:
-            sound_path = (
-                os.path.join(sound_folder, random.choice(available))
-                if settings.sound_selection_mode == 'RANDOM'
-                else single_path
-            )
-
-            volume = 1.0
-            pan = 0.0
-
-            if settings.use_speed_volume:
-                t = (event.speed - min_speed) / speed_range if speed_range > 0 else 1.0
-                volume *= settings.speed_volume_softer + t * (settings.speed_volume_louder - settings.speed_volume_softer)
-
-            if camera_obj and cam_data_cache:
-                cam_vol, cam_pan = _camera_volume_pan(
-                    Vector(event.position), camera_obj, event.frame, cam_data_cache,
-                )
-                volume *= cam_vol
-                pan = cam_pan
-
-            if settings.use_volume_randomness:
-                volume = _random_volume(volume, settings.volume_randomness)
-
-            frame_int = int(round(event.frame))
-            vol_pct = int(round(volume * 100))
-            name = f"{event.active}_{event.passive}_v{vol_pct}"
-
-            strip = _add_sound_strip(sed, name, sound_path, base_channel, frame_int)
-
-            if hasattr(strip, 'volume'):
-                strip.volume = volume
-            if hasattr(strip, 'sound') and hasattr(strip.sound, 'use_mono'):
-                strip.sound.use_mono = True
-            if settings.use_camera_volume_pan and hasattr(strip, 'pan'):
-                strip.pan = pan
-
-            _apply_strip_color(strip, event.active, color_map)
-            strip_obj_map[strip] = event.active
-            new_strips.append(strip)
-
-        if new_strips:
-            _separate_overlapping_strips(new_strips, base_channel)
-            for strip in new_strips:
-                _apply_strip_color(strip, strip_obj_map[strip], color_map)
-
-        self.report({'INFO'}, f"Added {len(new_strips)} sound strip(s) (channel {base_channel}+)")
-        return {'FINISHED'}
-
-
 def _selected_collision_spheres(context):
     return [obj for obj in context.selected_objects if "collision_frame" in obj]
 
@@ -233,31 +116,6 @@ def _all_assigned_spheres():
 def _store_group_assignment(obj, group_id):
     """Persist the audio group ID on a collision sphere."""
     obj["audio_group_id"] = group_id
-
-
-def _validate_sound_settings(settings, report_fn):
-    """Check current panel sound settings. Returns (folder, single_path) or None."""
-    sound_folder = bpy.path.abspath(settings.sound_folder)
-    if not sound_folder or not os.path.isdir(sound_folder):
-        report_fn({'ERROR'}, "Select a valid sound folder first")
-        return None
-
-    available = get_sound_files_from_folder(sound_folder)
-    if not available:
-        report_fn({'ERROR'}, "No audio files found in the selected folder")
-        return None
-
-    single_path = None
-    if settings.sound_selection_mode == 'SINGLE':
-        if not settings.sound_file or settings.sound_file == 'NONE':
-            report_fn({'ERROR'}, "Select a sound file")
-            return None
-        single_path = os.path.join(sound_folder, settings.sound_file)
-        if not os.path.exists(single_path):
-            report_fn({'ERROR'}, f"Sound file not found: {single_path}")
-            return None
-
-    return sound_folder, single_path
 
 
 def _resolve_group_sound_path(obj, context):
@@ -592,42 +450,6 @@ class COLLISION_OT_load_json_events(bpy.types.Operator):
     def invoke(self, context, event):
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
-
-
-class COLLISION_OT_select_sound_folder(bpy.types.Operator):
-    """Open file browser to select a folder containing sound files"""
-    bl_idname = "collision.select_sound_folder"
-    bl_label = "Select Sound Folder"
-    bl_options = {'REGISTER'}
-
-    directory: bpy.props.StringProperty(subtype='DIR_PATH')
-
-    def execute(self, context):
-        context.scene.collision_sound_import.sound_folder = self.directory
-        return {'FINISHED'}
-
-    def invoke(self, context, event):
-        context.window_manager.fileselect_add(self)
-        return {'RUNNING_MODAL'}
-
-
-class COLLISION_OT_use_default_sounds(bpy.types.Operator):
-    """Use the bundled default sound files"""
-    bl_idname = "collision.use_default_sounds"
-    bl_label = "Use Default Sounds"
-    bl_options = {'REGISTER'}
-
-    def execute(self, context):
-        from pathlib import Path
-        sounds_folder = str(Path(__file__).resolve().parent / "sounds")
-        if os.path.isdir(sounds_folder):
-            context.scene.collision_sound_import.sound_folder = sounds_folder
-            from .sound_properties import get_sound_files_from_folder
-            count = len(get_sound_files_from_folder(sounds_folder))
-            self.report({'INFO'}, f"Using default sounds ({count} file(s))")
-            return {'FINISHED'}
-        self.report({'ERROR'}, "Default sounds folder not found — add .wav files to the addon's sounds/ folder")
-        return {'CANCELLED'}
 
 
 class COLLISION_OT_clear_sounds(bpy.types.Operator):
