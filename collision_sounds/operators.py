@@ -249,7 +249,9 @@ class VIEW3D_PT_detect_collisions(bpy.types.Panel):
         layout.prop(settings, "dynamic_collection", icon='GROUP')
 
         layout.separator()
-        layout.operator("collision.detect", icon='PLAY')
+        row = layout.row()
+        row.alert = True
+        row.operator("collision.detect", icon='PLAY')
         layout.operator("collision.clear_visualization", icon='TRASH')
 
         if settings.events:
