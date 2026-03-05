@@ -31,7 +31,7 @@ class COLLISION_OT_visualize_collisions(bpy.types.Operator):
             self.report({'WARNING'}, "No collision events to visualize")
             return {'CANCELLED'}
 
-        vis_col = _get_or_create_collection(VIS_COLLECTION_NAME)
+        vis_col = _get_or_create_collection(context, VIS_COLLECTION_NAME)
         _clear_collection(vis_col)
 
         speeds = [e.speed for e in events]
@@ -52,6 +52,8 @@ class COLLISION_OT_visualize_collisions(bpy.types.Operator):
             bm = _icosphere_bmesh(radius=radius, subdivisions=2)
             bm.to_mesh(mesh)
             bm.free()
+            for poly in mesh.polygons:
+                poly.use_smooth = True
 
             obj.location = mathutils.Vector(event.position)
             obj.show_in_front = True
@@ -93,11 +95,15 @@ class COLLISION_OT_clear_visualization(bpy.types.Operator):
         return {'FINISHED'}
 
 
-def _get_or_create_collection(name):
+def _get_or_create_collection(context, name):
     if name in bpy.data.collections:
-        return bpy.data.collections[name]
-    col = bpy.data.collections.new(name)
-    bpy.context.scene.collection.children.link(col)
+        col = bpy.data.collections[name]
+    else:
+        col = bpy.data.collections.new(name)
+        bpy.context.scene.collection.children.link(col)
+    col.hide_render = True
+    settings = context.scene.collision_sounds
+    col.hide_viewport = not settings.show_audio_markers_viewport
     return col
 
 

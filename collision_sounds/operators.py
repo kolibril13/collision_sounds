@@ -5,6 +5,7 @@ import os
 import bpy
 
 from . import detection
+from .visualize_collisions import VIS_COLLECTION_NAME
 
 DETECTION_INTERMEDIATE = None
 
@@ -252,6 +253,8 @@ class VIEW3D_PT_detect_collisions(bpy.types.Panel):
         row = layout.row()
         row.alert = True
         row.operator("collision.detect", icon='PLAY')
+        if VIS_COLLECTION_NAME in bpy.data.collections:
+            layout.prop(settings, "show_audio_markers_viewport", text="Show Markers in Viewport", icon='HIDE_OFF', toggle=True)
         layout.operator("collision.clear_visualization", icon='TRASH')
 
         if settings.events:

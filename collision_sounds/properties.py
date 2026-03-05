@@ -3,6 +3,15 @@ import os
 import bpy
 
 
+def _sync_audio_markers_viewport_visibility(context):
+    """Apply scene.show_audio_markers_viewport to the Audio Markers collection if it exists."""
+    from .visualize_collisions import VIS_COLLECTION_NAME
+    if VIS_COLLECTION_NAME not in bpy.data.collections:
+        return
+    col = bpy.data.collections[VIS_COLLECTION_NAME]
+    col.hide_viewport = not context.scene.collision_sounds.show_audio_markers_viewport
+
+
 class CollisionEvent(bpy.types.PropertyGroup):
     frame: bpy.props.FloatProperty(name="Frame")
     time: bpy.props.FloatProperty(name="Time")
@@ -28,6 +37,12 @@ class CollisionSoundsSettings(bpy.types.PropertyGroup):
     events: bpy.props.CollectionProperty(
         name="Collision Events",
         type=CollisionEvent,
+    )
+    show_audio_markers_viewport: bpy.props.BoolProperty(
+        name="Show Audio Markers in Viewport",
+        description="Toggle visibility of audio marker spheres in the 3D viewport (they are never rendered)",
+        default=True,
+        update=lambda self, context: _sync_audio_markers_viewport_visibility(context),
     )
     export_json: bpy.props.BoolProperty(
         name="Export when detecting",
