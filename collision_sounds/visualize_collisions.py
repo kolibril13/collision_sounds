@@ -42,7 +42,7 @@ class COLLISION_OT_visualize_collisions(bpy.types.Operator):
         mat = _get_or_create_vis_material()
 
         for i, event in enumerate(events):
-            name = f"vis_{event.active}_{event.passive}_f{event.frame}"
+            name = f"vis_{event.active}_{event.passive}_f{event.frame}_{i}"
             mesh = bpy.data.meshes.new(name)
             obj = bpy.data.objects.new(name, mesh)
             vis_col.objects.link(obj)

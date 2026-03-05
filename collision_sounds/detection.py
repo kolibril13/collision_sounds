@@ -12,18 +12,20 @@ class DetectionIntermediate:
     """Scan the full animation timeline and return collision onset events.
 
     Checks every (target, collider) pair each frame.  A collision onset is
-    the first frame where a target comes within contact distance of a
-    collider (i.e. they were farther apart on the previous frame).
+    the first frame where at least one vertex of either object comes within
+    contact distance of a face of the other (i.e. they were farther apart on
+    the previous frame).
 
-    Contact distance is derived from each object's rigid-body collision margin
-    so the detector matches what the physics solver considers a collision,
-    even when mesh surfaces never truly interpenetrate (round objects, etc.).
+    Contact is vertex-vs-face: for each vertex of object A we find the
+    nearest point on the surface of object B; if that distance is within
+    the pair's threshold, that vertex is counted as colliding with a face.
+    Contact distance is derived from each object's rigid-body collision margin.
 
     Detection scans every frame sequentially (never jumping) so the rigid-body
     cache stays intact and all onsets are found.
 
-    Returns a list of event dicts with frame, target/collider names,
-    contact position, and velocities.
+    Returns a list of event dicts, one per colliding vertex, with frame,
+    target/collider names, position (vertex location), and velocities.
     """
 
     def __init__(self, context):
@@ -89,10 +91,14 @@ class DetectionIntermediate:
                     cur_velocities[name] = Vector((0.0, 0.0, 0.0))
 
             bvh_cache = {}
+            vertex_cache = {}
             for name, obj in self.all_objects.items():
-                bvh = _bvh_from_object(obj, self.depsgraph)
+                bvh, verts = _bvh_and_vertices_from_object(obj, self.depsgraph)
                 if bvh is not None:
                     bvh_cache[name] = bvh
+                    vertex_cache[name] = verts
+                else:
+                    vertex_cache[name] = []
 
             for target, collider in self.pairs:
                 bvh_t = bvh_cache.get(target.name)
@@ -101,34 +107,49 @@ class DetectionIntermediate:
                     continue
 
                 threshold = self.pair_thresholds[(target.name, collider.name)]
-                is_in_contact = _surfaces_within_distance(
-                    bvh_t,
-                    bvh_c,
-                    cur_positions[target.name],
-                    cur_positions[collider.name],
-                    threshold,
+                # Vertices of target that are in contact with collider's faces
+                target_verts_hitting = _vertices_in_contact_with_surface(
+                    vertex_cache[target.name], bvh_c, threshold
                 )
+                # Vertices of collider that are in contact with target's faces
+                collider_verts_hitting = _vertices_in_contact_with_surface(
+                    vertex_cache[collider.name], bvh_t, threshold
+                )
+                is_in_contact = len(target_verts_hitting) > 0 or len(collider_verts_hitting) > 0
                 key = (target.name, collider.name)
 
                 if is_in_contact and not self.was_in_contact[key]:
-                    pos_t = cur_positions[target.name]
-                    contact = _contact_position(bvh_c, pos_t) if bvh_c else pos_t
                     vel_t = cur_velocities.get(target.name, Vector())
                     vel_c = cur_velocities.get(collider.name, Vector())
-                    rel_vel = vel_t - vel_c
+                    rel_vel_t = vel_t - vel_c
+                    rel_vel_c = vel_c - vel_t
 
-                    self.collision_events.append(
-                        {
-                            "frame": float(self.next_frame),
-                            "time": round(self.next_frame / self.fps, 6),
-                            "target": target.name,
-                            "collider": collider.name,
-                            "position": _round_vec(contact),
-                            "velocity": _round_vec(vel_t),
-                            "relative_velocity": _round_vec(rel_vel),
-                            "speed": round(rel_vel.length, 4),
-                        }
-                    )
+                    for pos in target_verts_hitting:
+                        self.collision_events.append(
+                            {
+                                "frame": float(self.next_frame),
+                                "time": round(self.next_frame / self.fps, 6),
+                                "target": target.name,
+                                "collider": collider.name,
+                                "position": _round_vec(pos),
+                                "velocity": _round_vec(vel_t),
+                                "relative_velocity": _round_vec(rel_vel_t),
+                                "speed": round(rel_vel_t.length, 4),
+                            }
+                        )
+                    for pos in collider_verts_hitting:
+                        self.collision_events.append(
+                            {
+                                "frame": float(self.next_frame),
+                                "time": round(self.next_frame / self.fps, 6),
+                                "target": target.name,
+                                "collider": collider.name,
+                                "position": _round_vec(pos),
+                                "velocity": _round_vec(vel_c),
+                                "relative_velocity": _round_vec(rel_vel_c),
+                                "speed": round(rel_vel_c.length, 4),
+                            }
+                        )
 
                 self.was_in_contact[key] = is_in_contact
 
@@ -147,30 +168,34 @@ def _collision_threshold(obj_a, obj_b):
     return margin_a + margin_b + COLLISION_EPSILON
 
 
-def _surfaces_within_distance(bvh_a, bvh_b, pos_a, pos_b, threshold):
-    """Test whether the closest surface-to-surface gap is within *threshold*.
+def _vertices_in_contact_with_surface(vertex_positions_world, surface_bvh, threshold):
+    """Return world-space positions of vertices that are within *threshold* of the surface.
 
-    Uses a two-step nearest-point query (exact for convex objects): find the
-    closest point on B to A's centre, then the closest point on A back to
-    that location.  The distance between the two resulting surface points is
-    the approximate surface gap.
+    Each vertex is tested by finding the nearest point on the surface (face) of the
+    other object; if that distance is within threshold, the vertex is considered
+    in contact with a face.
     """
-    loc_on_b, _n, _i, _d = bvh_b.find_nearest(pos_a)
-    if loc_on_b is None:
-        return False
-    loc_on_a, _n, _i, _d = bvh_a.find_nearest(loc_on_b)
-    if loc_on_a is None:
-        return False
-    return (loc_on_a - loc_on_b).length <= threshold
+    colliding = []
+    for pos in vertex_positions_world:
+        loc, _n, _i, dist = surface_bvh.find_nearest(pos)
+        if loc is not None and dist <= threshold:
+            colliding.append(pos.copy())
+    return colliding
 
 
 def _bvh_from_object(obj, depsgraph):
     """Build a world-space BVHTree from the evaluated mesh of an object."""
+    bvh, _ = _bvh_and_vertices_from_object(obj, depsgraph)
+    return bvh
+
+
+def _bvh_and_vertices_from_object(obj, depsgraph):
+    """Build BVH and world-space vertex list in one mesh evaluation. Returns (bvh, vertices)."""
     eval_obj = obj.evaluated_get(depsgraph)
     mesh = eval_obj.to_mesh()
     if mesh is None or len(mesh.polygons) == 0:
         eval_obj.to_mesh_clear()
-        return None
+        return None, []
 
     mat = eval_obj.matrix_world
     vertices = [mat @ v.co for v in mesh.vertices]
@@ -178,17 +203,7 @@ def _bvh_from_object(obj, depsgraph):
 
     bvh = BVHTree.FromPolygons(vertices, polygons, epsilon=COLLISION_EPSILON)
     eval_obj.to_mesh_clear()
-    return bvh
-
-
-def _contact_position(passive_bvh, active_world_pos):
-    """Find the closest point on the passive surface to the active object."""
-    if passive_bvh is None:
-        return active_world_pos
-    location, _normal, _index, _dist = passive_bvh.find_nearest(active_world_pos)
-    if location is not None:
-        return location
-    return active_world_pos
+    return bvh, vertices
 
 
 def _round_vec(vec, precision=4):
