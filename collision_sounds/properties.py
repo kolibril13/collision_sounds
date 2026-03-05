@@ -29,18 +29,6 @@ class CollisionSoundsSettings(bpy.types.PropertyGroup):
         name="Collision Events",
         type=CollisionEvent,
     )
-    precision_mode: bpy.props.BoolProperty(
-        name="Precision Mode",
-        description="Scan at sub-frame intervals for more accurate collision timing",
-        default=False,
-    )
-    substeps: bpy.props.IntProperty(
-        name="Substeps",
-        description="Number of sub-frame steps per frame",
-        default=8,
-        min=2,
-        max=64,
-    )
     export_json: bpy.props.BoolProperty(
         name="Export when detecting",
         description="Automatically write collision events to the output path when running detection",

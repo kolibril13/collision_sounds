@@ -1,4 +1,3 @@
-import math
 from itertools import product
 
 import bpy
@@ -20,11 +19,8 @@ class DetectionIntermediate:
     so the detector matches what the physics solver considers a collision,
     even when mesh surfaces never truly interpenetrate (round objects, etc.).
 
-    Detection runs as two passes:
-      Pass 1 – scan every frame sequentially (never jumping) so the rigid-body
-               cache stays intact and all onsets are found.
-      Pass 2 – (precision mode only) revisit each onset to bisect the exact
-               sub-frame and recompute velocities at the precise moment.
+    Detection scans every frame sequentially (never jumping) so the rigid-body
+    cache stays intact and all onsets are found.
 
     Returns a list of event dicts with frame, target/collider names,
     contact position, and velocities.
@@ -37,8 +33,6 @@ class DetectionIntermediate:
         self.settings = self.scene.collision_sounds
         self.depsgraph = context.evaluated_depsgraph_get()
         self.fps = self.scene.render.fps / self.scene.render.fps_base
-        self.precision = self.settings.precision_mode
-        self.substeps = self.settings.substeps if self.precision else 1
 
         self.static_objects = [
             obj
@@ -143,82 +137,7 @@ class DetectionIntermediate:
             self.next_frame += 1
             return None
 
-        # ------------------------------------------------------------------
-        # Pass 2 (precision mode only): refine each onset to a sub-frame time
-        # and recompute velocities at that precise moment.
-        # ------------------------------------------------------------------
-        if self.precision and self.collision_events:
-            self.collision_events = _refine_events(
-                self.scene,
-                self.depsgraph,
-                self.collision_events,
-                self.all_objects,
-                self.pair_thresholds,
-                self.substeps,
-                self.fps,
-            )
-
         return self.collision_events
-
-def _refine_events(scene, depsgraph, events, all_objects,
-                   pair_thresholds, substeps, fps):
-    """Revisit each onset and bisect for sub-frame precision."""
-    refined = []
-    for ev in events:
-        frame = int(ev["frame"])
-        target = all_objects[ev["target"]]
-        collider = all_objects[ev["collider"]]
-        threshold = pair_thresholds[(target.name, collider.name)]
-
-        if frame > scene.frame_start:
-            precise_frame = _bisect_onset(
-                scene, depsgraph, target, collider,
-                frame - 1, frame, substeps, threshold,
-            )
-        else:
-            precise_frame = float(frame)
-
-        precise_int = int(precise_frame)
-        precise_sub = precise_frame - precise_int
-        scene.frame_set(precise_int, subframe=precise_sub)
-        depsgraph.update()
-
-        pos_t = target.evaluated_get(depsgraph).matrix_world.translation.copy()
-        pos_c = collider.evaluated_get(depsgraph).matrix_world.translation.copy()
-
-        bvh_c = _bvh_from_object(collider, depsgraph)
-        contact = _contact_position(bvh_c, pos_t) if bvh_c else pos_t
-
-        half_step = 0.5 / substeps
-        prev_t = max(precise_frame - half_step, scene.frame_start)
-        prev_int = int(prev_t)
-        prev_sub = prev_t - prev_int
-        scene.frame_set(prev_int, subframe=prev_sub)
-        depsgraph.update()
-        prev_pos_t = target.evaluated_get(depsgraph).matrix_world.translation.copy()
-        prev_pos_c = collider.evaluated_get(depsgraph).matrix_world.translation.copy()
-
-        dt = (precise_frame - prev_t) / fps
-        if dt > 0:
-            vel_t = (pos_t - prev_pos_t) / dt
-            vel_c = (pos_c - prev_pos_c) / dt
-        else:
-            vel_t = Vector(ev["velocity"])
-            vel_c = Vector((0.0, 0.0, 0.0))
-        rel_vel = vel_t - vel_c
-
-        refined.append({
-            "frame": round(precise_frame, 4),
-            "time": round(precise_frame / fps, 6),
-            "target": target.name,
-            "collider": collider.name,
-            "position": _round_vec(contact),
-            "velocity": _round_vec(vel_t),
-            "relative_velocity": _round_vec(rel_vel),
-            "speed": round(rel_vel.length, 4),
-        })
-
-    return refined
 
 
 def _collision_threshold(obj_a, obj_b):
@@ -243,38 +162,6 @@ def _surfaces_within_distance(bvh_a, bvh_b, pos_a, pos_b, threshold):
     if loc_on_a is None:
         return False
     return (loc_on_a - loc_on_b).length <= threshold
-
-
-def _bisect_onset(scene, depsgraph, obj_a, obj_b, frame_lo, frame_hi,
-                  substeps, threshold):
-    """Binary-search the sub-frame interval [frame_lo, frame_hi] for the
-    earliest moment two objects come within contact distance."""
-    lo = float(frame_lo)
-    hi = float(frame_hi)
-    iterations = max(1, int(math.ceil(math.log2(substeps))))
-
-    for _ in range(iterations):
-        mid = (lo + hi) / 2.0
-        mid_int = int(mid)
-        mid_sub = mid - mid_int
-        scene.frame_set(mid_int, subframe=mid_sub)
-        depsgraph.update()
-
-        bvh_a = _bvh_from_object(obj_a, depsgraph)
-        bvh_b = _bvh_from_object(obj_b, depsgraph)
-        if bvh_a is None or bvh_b is None:
-            lo = mid
-            continue
-
-        pos_a = obj_a.evaluated_get(depsgraph).matrix_world.translation.copy()
-        pos_b = obj_b.evaluated_get(depsgraph).matrix_world.translation.copy()
-
-        if _surfaces_within_distance(bvh_a, bvh_b, pos_a, pos_b, threshold):
-            hi = mid
-        else:
-            lo = mid
-
-    return round(hi, 4)
 
 
 def _bvh_from_object(obj, depsgraph):
