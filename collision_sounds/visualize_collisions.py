@@ -11,8 +11,8 @@ import mathutils
 VIS_COLLECTION_NAME = "Audio Markers"
 SPEED_MATERIAL_NAME = "collision_vis_speed"   # legacy name kept so old materials are cleaned up
 VIS_MATERIAL_NAME = "collision_vis_group"
-SPHERE_RADIUS_SLOW = 0.16   # radius for slow collisions (blue)
-SPHERE_RADIUS_FAST = 0.50   # radius for fast collisions (red)
+SPHERE_RADIUS_SLOW = 0.08   # radius for slow collisions (blue)
+SPHERE_RADIUS_FAST = 0.40   # radius for fast collisions (red)
 
 
 class COLLISION_OT_visualize_collisions(bpy.types.Operator):
@@ -117,10 +117,11 @@ def _clear_collection(col):
 
 
 def _get_or_create_vis_material():
-    """Shared emissive material: Object Info → Color → Emission.
+    """Shared emissive material: Object Info → HSV (boost saturation/value) → Emission.
 
     Each sphere's ``obj.color`` is set to the audio group's color when assigned,
     so the viewport color reflects the group without needing per-object materials.
+    HSV node makes colors more vibrant without changing their hue.
     """
     if VIS_MATERIAL_NAME in bpy.data.materials:
         return bpy.data.materials[VIS_MATERIAL_NAME]
@@ -131,15 +132,21 @@ def _get_or_create_vis_material():
     tree.nodes.clear()
 
     obj_info = tree.nodes.new("ShaderNodeObjectInfo")
-    obj_info.location = (-200, 0)
+    obj_info.location = (-380, 0)
+
+    hsv = tree.nodes.new("ShaderNodeHueSaturation")
+    hsv.location = (-160, 0)
+    hsv.inputs["Saturation"].default_value = 2.0
+    hsv.inputs["Value"].default_value = 1.0
+    tree.links.new(obj_info.outputs["Color"], hsv.inputs["Color"])
 
     emission = tree.nodes.new("ShaderNodeEmission")
-    emission.location = (100, 0)
-    emission.inputs["Strength"].default_value = 3.0
-    tree.links.new(obj_info.outputs["Color"], emission.inputs["Color"])
+    emission.location = (60, 0)
+    emission.inputs["Strength"].default_value = 2.0
+    tree.links.new(hsv.outputs["Color"], emission.inputs["Color"])
 
     output = tree.nodes.new("ShaderNodeOutputMaterial")
-    output.location = (320, 0)
+    output.location = (280, 0)
     tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
 
     return mat
