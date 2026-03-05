@@ -204,6 +204,9 @@ class VIEW3D_PT_export(bpy.types.Panel):
     bl_order = 3
     bl_options = {'DEFAULT_CLOSED'}
 
+    def draw_header(self, context):
+        self.layout.label(icon='EXPORT')
+
     def draw(self, context):
         layout = self.layout
         scene = context.scene
@@ -232,6 +235,10 @@ class VIEW3D_PT_detect_collisions(bpy.types.Panel):
     bl_category = "Collision Sounds"
     bl_parent_id = "VIEW3D_PT_collision_sounds"
     bl_order = 0
+    # bl_options = {'DEFAULT_CLOSED'}
+
+    def draw_header(self, context):
+        self.layout.label(icon='TRACKER')
 
     def draw(self, context):
         layout = self.layout

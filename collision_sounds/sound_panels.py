@@ -33,6 +33,10 @@ class VIEW3D_PT_add_sounds(bpy.types.Panel):
     bl_category = "Collision Sounds"
     bl_parent_id = "VIEW3D_PT_collision_sounds"
     bl_order = 2
+    bl_options = {'DEFAULT_CLOSED'}
+
+    def draw_header(self, context):
+        self.layout.label(icon='FILE_SOUND')
 
     def draw(self, context):
         layout = self.layout
