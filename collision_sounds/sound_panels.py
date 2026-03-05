@@ -15,7 +15,7 @@ class VIEW3D_UL_audio_groups(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
         if self.layout_type in {'DEFAULT', 'COMPACT'}:
             row = layout.row(align=True)
-            row.label(text=item.name, icon=f"STRIP_{item.color}")
+            row.prop(item, "name", text="", emboss=False, icon=f"STRIP_{item.color}")
         elif self.layout_type == 'GRID':
             layout.alignment = 'CENTER'
             layout.label(text="", icon=f"STRIP_{item.color}")
