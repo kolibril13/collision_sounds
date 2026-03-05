@@ -2,7 +2,7 @@ import os
 
 import bpy
 
-from .sound_properties import get_sound_files_from_folder, AUDIO_GROUP_COLOR_ITEMS
+from .sound_properties import get_sound_files_from_folder, AUDIO_GROUP_COLOR_ITEMS, default_sounds_folder
 
 
 # ---------------------------------------------------------------------------
@@ -89,9 +89,12 @@ class VIEW3D_PT_add_sounds(bpy.types.Panel):
                 row2.label(text=folder_name, icon='CHECKMARK')
             else:
                 row2.label(text="Not selected", icon='ERROR')
+            default_path = default_sounds_folder()
+            current_path = os.path.normpath(bpy.path.abspath(active_group.sound_folder)) if active_group.sound_folder else ""
+            is_default = current_path == os.path.normpath(default_path)
             row2 = col.row(align=True)
-            row2.operator("collision.use_default_group_sounds", text="Use Default", icon='PACKAGE')
-            row2.operator("collision.select_group_sound_folder", text="Select Folder...", icon='FILEBROWSER')
+            row2.operator("collision.use_default_group_sounds", text="Use Default", icon='PACKAGE', depress=is_default)
+            row2.operator("collision.select_group_sound_folder", text="Select Folder...", icon='FILEBROWSER', depress=not is_default)
 
             if active_group.sound_folder:
                 layout.separator()

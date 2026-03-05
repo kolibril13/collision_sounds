@@ -30,6 +30,13 @@ GROUP_COLOR_CYCLE = [
 ]
 
 
+def default_sounds_folder():
+    """Return the path to the bundled default sounds folder, or empty string if missing."""
+    from pathlib import Path
+    folder = str(Path(__file__).resolve().parent / "sounds")
+    return folder if os.path.isdir(folder) else ""
+
+
 def get_sound_files_from_folder(folder_path):
     """Get all supported audio files from a folder."""
     if not folder_path or not os.path.isdir(folder_path):
@@ -161,6 +168,7 @@ def _ensure_default_groups():
             group.group_id = settings.next_group_id
             group.color = GROUP_COLOR_CYCLE[0]
             group.name = "Group 1"
+            group.sound_folder = default_sounds_folder()
             settings.next_group_id += 1
             settings.active_audio_group_index = 0
     return None  # one-shot timer

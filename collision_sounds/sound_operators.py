@@ -6,7 +6,7 @@ import random
 import bpy
 from mathutils import Vector
 
-from .sound_properties import get_sound_files_from_folder, AUDIO_GROUP_COLOR_ITEMS, GROUP_COLOR_CYCLE
+from .sound_properties import get_sound_files_from_folder, AUDIO_GROUP_COLOR_ITEMS, GROUP_COLOR_CYCLE, default_sounds_folder
 
 # RGB values matching Blender's STRIP_COLOR_01–09 (linear color space).
 GROUP_COLORS = {
@@ -263,6 +263,7 @@ class COLLISION_OT_add_audio_group(bpy.types.Operator):
         group.group_id = settings.next_group_id
         group.color = next_color
         group.name = name
+        group.sound_folder = default_sounds_folder()
         settings.next_group_id += 1
         settings.active_audio_group_index = len(groups) - 1
 
