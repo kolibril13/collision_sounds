@@ -40,25 +40,25 @@ class DetectionIntermediate:
         self.precision = self.settings.precision_mode
         self.substeps = self.settings.substeps if self.precision else 1
 
-        self.targets = [
+        self.static_objects = [
             obj
-            for obj in self.settings.targets_collection.objects
+            for obj in self.settings.static_collection.objects
             if obj.type == "MESH"
         ]
-        self.colliders = [
+        self.dynamic_objects = [
             obj
-            for obj in self.settings.colliders_collection.objects
+            for obj in self.settings.dynamic_collection.objects
             if obj.type == "MESH"
         ]
-        self.pairs = list(product(self.targets, self.colliders))
+        self.pairs = list(product(self.static_objects, self.dynamic_objects))
 
         self.was_in_contact = {(t.name, c.name): False for t, c in self.pairs}
         self.prev_positions = {}
         self.collision_events = []
         self.all_objects = {}
-        for obj in self.targets:
+        for obj in self.static_objects:
             self.all_objects[obj.name] = obj
-        for obj in self.colliders:
+        for obj in self.dynamic_objects:
             self.all_objects[obj.name] = obj
 
         self.pair_thresholds = {}

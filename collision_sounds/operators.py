@@ -18,20 +18,20 @@ class COLLISION_OT_detect(bpy.types.Operator):
         scene = context.scene
         settings = scene.collision_sounds
 
-        if settings.targets_collection is None:
-            self.report({'ERROR'}, "No targets collection assigned")
+        if settings.static_collection is None:
+            self.report({'ERROR'}, "No static collection assigned")
             return {'CANCELLED'}
-        if settings.colliders_collection is None:
-            self.report({'ERROR'}, "No colliders collection assigned")
+        if settings.dynamic_collection is None:
+            self.report({'ERROR'}, "No dynamic collection assigned")
             return {'CANCELLED'}
 
-        targets = [o for o in settings.targets_collection.objects if o.type == 'MESH']
-        colliders = [o for o in settings.colliders_collection.objects if o.type == 'MESH']
-        if not targets:
-            self.report({'ERROR'}, "Targets collection has no mesh objects")
+        static_objects = [o for o in settings.static_collection.objects if o.type == 'MESH']
+        dynamic_objects = [o for o in settings.dynamic_collection.objects if o.type == 'MESH']
+        if not static_objects:
+            self.report({'ERROR'}, "Static collection has no mesh objects")
             return {'CANCELLED'}
-        if not colliders:
-            self.report({'ERROR'}, "Colliders collection has no mesh objects")
+        if not dynamic_objects:
+            self.report({'ERROR'}, "Dynamic collection has no mesh objects")
             return {'CANCELLED'}
 
         global DETECTION_INTERMEDIATE
@@ -110,8 +110,8 @@ class COLLISION_OT_detect_modal(bpy.types.Operator):
                     "fps": fps,
                     "frame_start": scene.frame_start,
                     "frame_end": scene.frame_end,
-                    "targets_collection": settings.targets_collection.name,
-                    "colliders_collection": settings.colliders_collection.name,
+                    "static_collection": settings.static_collection.name,
+                    "dynamic_collection": settings.dynamic_collection.name,
                 },
                 "events": events,
             }
@@ -166,8 +166,8 @@ class COLLISION_OT_export_json(bpy.types.Operator):
                 "fps": fps,
                 "frame_start": scene.frame_start,
                 "frame_end": scene.frame_end,
-                "targets_collection": settings.targets_collection.name if settings.targets_collection else "",
-                "colliders_collection": settings.colliders_collection.name if settings.colliders_collection else "",
+                "static_collection": settings.static_collection.name if settings.static_collection else "",
+                "dynamic_collection": settings.dynamic_collection.name if settings.dynamic_collection else "",
             },
             "events": events,
         }
@@ -246,8 +246,8 @@ class VIEW3D_PT_detect_collisions(bpy.types.Panel):
         settings = scene.collision_sounds
         fps = scene.render.fps / scene.render.fps_base
 
-        layout.prop(settings, "targets_collection", icon='GROUP')
-        layout.prop(settings, "colliders_collection", icon='GROUP')
+        layout.prop(settings, "static_collection", icon='GROUP')
+        layout.prop(settings, "dynamic_collection", icon='GROUP')
 
         layout.separator()
         layout.prop(settings, "precision_mode")
