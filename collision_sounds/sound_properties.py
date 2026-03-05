@@ -101,6 +101,33 @@ class AudioGroup(bpy.types.PropertyGroup):
     )
 
 
+def _update_marker_threshold_colors(context):
+    """Set markers below the speed threshold to black; restore others to their group color."""
+    from .visualize_collisions import VIS_COLLECTION_NAME
+    from .sound_operators import GROUP_COLORS
+
+    if VIS_COLLECTION_NAME not in bpy.data.collections:
+        return
+    col = bpy.data.collections[VIS_COLLECTION_NAME]
+    settings = context.scene.collision_sound_import
+    threshold = settings.markers_sound_threshold
+
+    for obj in col.objects:
+        speed_t = obj.get("collision_speed", 0.0)
+        if speed_t < threshold:
+            obj.color = (0.0, 0.0, 0.0, 1.0)
+        else:
+            group_id = obj.get("audio_group_id")
+            if group_id is not None:
+                group = next((g for g in settings.audio_groups if g.group_id == group_id), None)
+                if group:
+                    obj.color = GROUP_COLORS.get(group.color, (1.0, 1.0, 1.0, 1.0))
+                else:
+                    obj.color = (1.0, 1.0, 1.0, 1.0)
+            else:
+                obj.color = (1.0, 1.0, 1.0, 1.0)
+
+
 class SoundImportSettings(bpy.types.PropertyGroup):
     use_speed_volume: bpy.props.BoolProperty(
         name="Collision Speed → Volume",
@@ -143,6 +170,13 @@ class SoundImportSettings(bpy.types.PropertyGroup):
         name="Amount",
         description="Random variation amount (0 = none, 1 = can reduce to 0)",
         default=0.2, min=0.0, max=1.0, subtype='FACTOR',
+    )
+
+    markers_sound_threshold: bpy.props.FloatProperty(
+        name="Markers Sound Threshold",
+        description="Ignore markers with a normalized speed below this value. They turn black and are excluded from sound placement",
+        default=0.0, min=0.0, max=1.0, subtype='FACTOR',
+        update=lambda self, ctx: _update_marker_threshold_colors(ctx),
     )
 
     # Audio groups.

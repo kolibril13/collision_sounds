@@ -112,12 +112,15 @@ class VIEW3D_PT_add_sounds(bpy.types.Panel):
                     count = len(get_sound_files_from_folder(folder_path))
                     col2.label(text=f"Will use {count} sound(s) randomly", icon='INFO')
 
-        # ---- Add assigned ------------------------------------------------
+        # ---- Threshold & Add assigned ------------------------------------
         from .sound_operators import _all_assigned_spheres
         num_assigned = len(_all_assigned_spheres())
         layout.separator()
+
+        layout.prop(settings, "markers_sound_threshold", text="Markers Sound Threshold", slider=True)
+
         if num_assigned > 0:
-            layout.label(text=f"{num_assigned} point(s) have sounds assigned",
+            layout.label(text=f"{num_assigned} point(s) above threshold with sounds assigned",
                          icon='CHECKMARK')
         row = layout.row(align=True)
         row.scale_y = 1.5

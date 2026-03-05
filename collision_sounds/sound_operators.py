@@ -105,12 +105,16 @@ def _selected_collision_spheres(context):
     return [obj for obj in context.selected_objects if "collision_frame" in obj]
 
 
-def _all_assigned_spheres():
+def _all_assigned_spheres(apply_threshold=True):
     from .visualize_collisions import VIS_COLLECTION_NAME
     if VIS_COLLECTION_NAME not in bpy.data.collections:
         return []
     col = bpy.data.collections[VIS_COLLECTION_NAME]
-    return [obj for obj in col.objects if "audio_group_id" in obj]
+    spheres = [obj for obj in col.objects if "audio_group_id" in obj]
+    if apply_threshold:
+        threshold = bpy.context.scene.collision_sound_import.markers_sound_threshold
+        spheres = [obj for obj in spheres if obj.get("collision_speed", 0.0) >= threshold]
+    return spheres
 
 
 def _store_group_assignment(obj, group_id):
