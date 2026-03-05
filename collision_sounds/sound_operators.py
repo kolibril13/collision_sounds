@@ -6,7 +6,7 @@ import random
 import bpy
 from mathutils import Vector
 
-from .sound_properties import get_sound_files_from_folder, AUDIO_GROUP_COLOR_ITEMS
+from .sound_properties import get_sound_files_from_folder, AUDIO_GROUP_COLOR_ITEMS, GROUP_COLOR_CYCLE
 
 # RGB values matching Blender's STRIP_COLOR_01–09 (linear color space).
 GROUP_COLORS = {
@@ -250,20 +250,14 @@ class COLLISION_OT_add_audio_group(bpy.types.Operator):
         settings = context.scene.collision_sound_import
         groups = settings.audio_groups
 
-        # Cycle through colors in order, wrapping around (Red, Orange, …, Gray, Red(2), Orange(2), …).
-        color_order = [item[0] for item in AUDIO_GROUP_COLOR_ITEMS]
-        next_color = color_order[len(groups) % len(color_order)]
+        next_color = GROUP_COLOR_CYCLE[len(groups) % len(GROUP_COLOR_CYCLE)]
 
-        color_label = next(item[1] for item in AUDIO_GROUP_COLOR_ITEMS if item[0] == next_color)
-
-        # Generate a unique display name.
+        # Find the next available "Group N" number.
+        n = len(groups) + 1
         existing_names = {g.name for g in groups}
-        name = color_label
-        if name in existing_names:
-            i = 2
-            while f"{color_label} ({i})" in existing_names:
-                i += 1
-            name = f"{color_label} ({i})"
+        while f"Group {n}" in existing_names:
+            n += 1
+        name = f"Group {n}"
 
         group = groups.add()
         group.group_id = settings.next_group_id
@@ -283,7 +277,7 @@ class COLLISION_OT_remove_audio_group(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return len(context.scene.collision_sound_import.audio_groups) > 0
+        return len(context.scene.collision_sound_import.audio_groups) > 1
 
     def execute(self, context):
         settings = context.scene.collision_sound_import

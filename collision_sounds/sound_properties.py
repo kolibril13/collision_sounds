@@ -16,6 +16,19 @@ AUDIO_GROUP_COLOR_ITEMS = [
     ('COLOR_09', "Gray",   "Gray",   'STRIP_COLOR_09', 8),
 ]
 
+# Contrasting color order: each successive color is visually distinct from the previous.
+GROUP_COLOR_CYCLE = [
+    'COLOR_05',  # Blue
+    'COLOR_01',  # Red
+    'COLOR_04',  # Green
+    'COLOR_03',  # Yellow
+    'COLOR_06',  # Purple
+    'COLOR_02',  # Orange
+    'COLOR_07',  # Pink
+    'COLOR_08',  # Brown
+    'COLOR_09',  # Gray
+]
+
 
 def get_sound_files_from_folder(folder_path):
     """Get all supported audio files from a folder."""
@@ -139,11 +152,34 @@ class SoundImportSettings(bpy.types.PropertyGroup):
     )
 
 
+def _ensure_default_groups():
+    """Create a default 'Group 1' on every scene that has no audio groups."""
+    for scene in bpy.data.scenes:
+        settings = scene.collision_sound_import
+        if len(settings.audio_groups) == 0:
+            group = settings.audio_groups.add()
+            group.group_id = settings.next_group_id
+            group.color = GROUP_COLOR_CYCLE[0]
+            group.name = "Group 1"
+            settings.next_group_id += 1
+            settings.active_audio_group_index = 0
+    return None  # one-shot timer
+
+
+@bpy.app.handlers.persistent
+def _load_post_handler(dummy):
+    bpy.app.timers.register(_ensure_default_groups, first_interval=0.0)
+
+
 def register():
     bpy.types.Scene.collision_sound_import = bpy.props.PointerProperty(
         type=SoundImportSettings,
     )
+    bpy.app.handlers.load_post.append(_load_post_handler)
+    bpy.app.timers.register(_ensure_default_groups, first_interval=0.1)
 
 
 def unregister():
+    if _load_post_handler in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.remove(_load_post_handler)
     del bpy.types.Scene.collision_sound_import
