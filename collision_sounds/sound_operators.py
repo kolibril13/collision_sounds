@@ -387,7 +387,7 @@ class COLLISION_OT_assign_sound(bpy.types.Operator):
 class COLLISION_OT_readd_assigned_sounds(bpy.types.Operator):
     """Create VSE strips for all collision points that have a sound group assigned"""
     bl_idname = "collision.readd_assigned_sounds"
-    bl_label = "Add All Assigned"
+    bl_label = "Place Sounds on Markers"
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod

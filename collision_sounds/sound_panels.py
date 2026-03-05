@@ -43,6 +43,7 @@ class VIEW3D_PT_add_sounds(bpy.types.Panel):
         settings = context.scene.collision_sound_import
 
         # ---- Audio Groups ------------------------------------------------
+        layout.label(text="Audio Groups", icon='GROUP')
         row = layout.row()
         row.template_list(
             "VIEW3D_UL_audio_groups", "",
@@ -75,9 +76,8 @@ class VIEW3D_PT_add_sounds(bpy.types.Panel):
                              icon='RESTRICT_SELECT_ON')
 
             row = layout.row(align=True)
-            row.scale_y = 1.3
             row.enabled = num_selected > 0
-            row.operator("collision.assign_sound", text="Assign", icon='PINNED')
+            row.operator("collision.assign_sound", text="Assign to selected Audio Group", icon='PINNED')
 
             # Sound folder and selection below the assign button.
             layout.separator()
@@ -117,6 +117,8 @@ class VIEW3D_PT_add_sounds(bpy.types.Panel):
             layout.label(text=f"{num_assigned} point(s) have sounds assigned",
                          icon='CHECKMARK')
         row = layout.row(align=True)
+        row.scale_y = 1.5
+        row.alert = True
         row.enabled = num_assigned > 0
         row.operator("collision.readd_assigned_sounds", icon='PLAY_SOUND')
 
