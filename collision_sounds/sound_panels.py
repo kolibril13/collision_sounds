@@ -136,6 +136,7 @@ class VIEW3D_PT_speed_volume(bpy.types.Panel):
     bl_region_type = 'UI'
     bl_category = "Collision Sounds"
     bl_parent_id = "VIEW3D_PT_add_sounds"
+    bl_options = {'DEFAULT_CLOSED'}
     bl_order = 1
 
     def draw_header(self, context):
@@ -157,6 +158,7 @@ class VIEW3D_PT_camera_volume_pan(bpy.types.Panel):
     bl_region_type = 'UI'
     bl_category = "Collision Sounds"
     bl_parent_id = "VIEW3D_PT_add_sounds"
+    bl_options = {'DEFAULT_CLOSED'}
     bl_order = 2
 
     def draw_header(self, context):
@@ -180,6 +182,7 @@ class VIEW3D_PT_randomize_volume(bpy.types.Panel):
     bl_region_type = 'UI'
     bl_category = "Collision Sounds"
     bl_parent_id = "VIEW3D_PT_add_sounds"
+    bl_options = {'DEFAULT_CLOSED'}
     bl_order = 3
 
     def draw_header(self, context):
